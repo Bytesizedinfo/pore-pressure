@@ -89,8 +89,8 @@ PP.main = {
     if (!frozen) {
       acc += fdt;
       let n = 0;
-      while (acc >= dt && n < 6) { W.step(dt); acc -= dt; n++; }
-      if (n === 6) acc = 0;
+      while (acc >= dt && n < 3) { W.step(dt); acc -= dt; n++; }
+      if (n === 3) acc = 0;   // never snowball: a slow frame just runs the sim slower
     }
     // camera shake on flinch
     const sh = W.cam.shake > 0 ? W.cam.shake * 0.6 : 0;

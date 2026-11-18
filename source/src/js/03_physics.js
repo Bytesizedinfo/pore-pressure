@@ -93,6 +93,8 @@ PP.Phys = function () {
     return Math.max(inner, Math.min(point, p)) * 1000;
   };
   this.cavityLoad = function (x, y, z) {
+    // contacts further than ~6 decay lengths have no measurable effect
+    if (!this.contacts.some((c) => Math.hypot(x - c.x, y - c.y) < 6 * this.Ld + c.a)) return { sz: 0, lat: 0, total: 0 };
     let sz = 0;
     for (const c of this.contacts) {
       const r = Math.hypot(x - c.x, y - c.y);

@@ -98,16 +98,31 @@ PP.World.prototype.addLesion = function (type, x, y, d) {
 
 // skin height grid over the view (for particle collisions and tool placement)
 PP.World.prototype.buildHeightGrid = function () {
-  const C = this.cam, G = this.grid;
-  const nx = 72, ny = Math.max(24, Math.round((72 * C.vh) / C.vw));
-  if (G.n !== nx * ny) { G.h = new Float32Array(nx * ny); G.n = nx * ny; }
+  // one pass: dents + in-plane displacement per node; thickening (-Heff * div u) from grid differences
+  const C = this.cam, G = this.grid, ph = this.phys;
+  const nx = 56, ny = Math.max(20, Math.round((56 * C.vh) / C.vw));
+  if (G.n !== nx * ny) { G.h = new Float32Array(nx * ny); G.ux = new Float32Array(nx * ny); G.uy = new Float32Array(nx * ny); G.n = nx * ny; }
   G.nx = nx; G.ny = ny;
   const pad = 6;
   G.x0 = C.x - C.vw / 2 - pad; G.y0 = C.y - C.vh / 2 - pad; G.dx = (C.vw + 2 * pad) / (nx - 1); G.dy = (C.vh + 2 * pad) / (ny - 1);
-  const hasContacts = this.phys.contacts.length > 0;
+  const cs = ph.contacts, hasQ = cs.some((c) => c.qx || c.qy);
+  const tmp = [0, 0];
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const x = G.x0 + i * G.dx, y = G.y0 + j * G.dy;
-    G.h[j * nx + i] = (hasContacts ? this.phys.wAt(x, y) : 0) + this.lesionH(x, y);
+    const x = G.x0 + i * G.dx, y = G.y0 + j * G.dy, k = j * nx + i;
+    let w = 0;
+    for (const c of cs) {
+      const r = Math.hypot(x - c.x, y - c.y);
+      if (r > 6 * ph.Ld) continue;
+      if (c.fn) w += ph.dentW(c.fn, c.a, r);
+      if (c.suction) w -= ph.dentW(c.suction * 1e-3 * Math.PI * c.a * c.a, c.a, r) * 0.5;
+    }
+    if (hasQ) { ph.uAt(x, y, tmp); G.ux[k] = tmp[0]; G.uy[k] = tmp[1]; }
+    G.h[k] = w + this.lesionH(x, y);
+  }
+  if (hasQ) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const k = j * nx + i;
+    const div = (G.ux[k + 1] - G.ux[k - 1]) / (2 * G.dx) + (G.uy[k + nx] - G.uy[k - nx]) / (2 * G.dy);
+    G.h[k] -= ph.Heff * div;
   }
 };
 PP.World.prototype.lesionH = function (x, y) {
@@ -204,7 +219,8 @@ PP.World.prototype.step = function (dt) {
   this.time += dt; this.clock += dt; this.ctx.clock = this.clock;
   this.tools.update(dt);
   this.ctx.toolId = this.tools.id;
-  this.buildHeightGrid();
+  // the collision surface only needs refreshing once per displayed frame
+  if (this.time - (this._gridT || -1) >= 1 / 60) { this.buildHeightGrid(); this._gridT = this.time; }
   // active lesion = the one nearest the pointer
   const p = this.tools.ptr;
   let best = null, bd = 1e9;

@@ -60,13 +60,14 @@ PP.UI.prototype.build = function () {
   // zoom controls
   $('zin').addEventListener('click', () => this.zoomBy(1.35));
   $('zout').addEventListener('click', () => this.zoomBy(1 / 1.35));
-  $('zfit').addEventListener('click', () => { W.cam.zoom = PP.UI.ZMIN; this.zoomBy(1); });
+  $('zfit').addEventListener('click', () => { W.cam.zoom = this.zmin(); this.zoomBy(1); });
   // add your own blemishes (any area)
   const add = $('addsel');
   const groups = {};
   for (const [k, t] of Object.entries(PP.LTYPES)) (groups[t.group] = groups[t.group] || []).push([k, t]);
   add.innerHTML = '<option value="">Add blemish…</option>' + Object.entries(groups).map(([g, list]) => `<optgroup label="${g}">${list.map(([k, t]) => `<option value="${k}">${t.name}</option>`).join('')}</optgroup>`).join('');
   add.addEventListener('change', () => this.setPlace(add.value || null));
+  $('erasebtn').addEventListener('click', () => this.setErase(!this.erasing));
   $('clearles').addEventListener('click', () => { W.clearPatch(); this.sel = null; this.toast('', 'Blank skin', 'Pick a blemish from the Add menu and click the skin to place it.'); });
   this.renderTray();
   this.renderChart(true);
@@ -227,6 +228,7 @@ PP.UI.prototype.bindInput = function () {
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     const p = this.toWorld(e.clientX, e.clientY);
     if (e.button === 2 || e.button === 1) { this.pan = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y }; return; }
+    if (this.erasing) { this.eraseDrag = true; this.eraseAt(p.x, p.y); return; }
     if (this.placeType) {
       const T = PP.LTYPES[this.placeType];
       const k = +this.$('addsize').value;
@@ -263,7 +265,7 @@ PP.UI.prototype.bindInput = function () {
     if (this.pinch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
-      W.cam.zoom = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), PP.UI.ZMIN, PP.UI.ZMAX);
+      W.cam.zoom = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
       const r = cv.getBoundingClientRect();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       W.cam.vw = W.area.view / W.cam.zoom;
@@ -272,11 +274,13 @@ PP.UI.prototype.bindInput = function () {
       this.clampCam(); return;
     }
     const p = this.toWorld(e.clientX, e.clientY);
+    if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
     if (!T.ptr.down) { T.ptr.x = p.x; T.ptr.y = p.y; T.ptr.lx = p.x; T.ptr.ly = p.y; }
     else T.move(p.x, p.y, { pressure: e.pointerType === 'pen' ? e.pressure : null });
   });
   const end = (e) => {
     this.ptrs.delete(e.pointerId);
+    if (this.eraseDrag) { this.eraseDrag = false; return; }
     if (this.pan && this.ptrs.size === 0) { this.pan = null; return; }
     if (T.touch) { if (this.ptrs.size < 2) { T.touch = null; } return; }
     if (this.pinch) { if (this.ptrs.size < 2) this.pinch = null; return; }
@@ -294,7 +298,7 @@ PP.UI.prototype.bindInput = function () {
       return;
     }
     const before = this.toWorld(e.clientX, e.clientY);
-    W.cam.zoom = PP.clamp(W.cam.zoom * Math.exp(-e.deltaY * 0.0015), PP.UI.ZMIN, PP.UI.ZMAX);
+    W.cam.zoom = PP.clamp(W.cam.zoom * Math.exp(-e.deltaY * 0.0015), this.zmin(), PP.UI.ZMAX);
     W.cam.vw = W.area.view / W.cam.zoom; W.cam.vh = (W.cam.vw * W.cam.ch) / W.cam.cw;
     const after = this.toWorld(e.clientX, e.clientY);
     W.cam.x += before.x - after.x; W.cam.y += before.y - after.y;
@@ -310,10 +314,36 @@ PP.UI.prototype.bindInput = function () {
     else if (k === ']') { if (T.spread[T.id] != null) T.spread[T.id] = Math.min(12, T.spread[T.id] + 0.4); }
     else if (e.key === '+' || e.key === '=') this.zoomBy(1.35);
     else if (e.key === '-' || e.key === '_') this.zoomBy(1 / 1.35);
-    else if (e.key === 'Escape') { this.setPlace(null); this.closeSettings(); }
+    else if (k === 'X') this.setErase(!this.erasing);
+    else if (e.key === 'Escape') { this.setPlace(null); this.setErase(false); this.closeSettings(); }
   });
 };
-PP.UI.ZMIN = 0.6; PP.UI.ZMAX = 6;
+PP.UI.ZMAX = 6;
+// zoom far enough out to see the whole skin patch
+PP.UI.prototype.zmin = function () { return Math.min(0.6, this.W.area.view / this.W.area.size); };
+PP.UI.prototype.setErase = function (on) {
+  this.erasing = !!on;
+  if (on) { this.placeType = null; this.$('addsel').value = ''; this.canvas.classList.remove('placing'); }
+  this.canvas.classList.toggle('erasing', this.erasing);
+  const b = this.$('erasebtn'); b.classList.toggle('on', this.erasing); b.setAttribute('aria-pressed', this.erasing ? 'true' : 'false');
+  if (on) this.toast('', 'Eraser on', 'Click or drag over blemishes to remove them. Press X or Esc to stop.');
+};
+// remove every blemish under the eraser (plus whatever it has oozed onto the skin)
+PP.UI.prototype.eraseAt = function (x, y) {
+  const W = this.W, P = W.parts;
+  const brush = Math.max(0.5, (14 / W.cam.cw) * W.cam.vw);
+  const gone = W.lesions.filter((L) => Math.hypot(L.x + L.ox - x, L.y + L.oy - y) < L.R + brush);
+  if (!gone.length) return;
+  for (const L of gone) {
+    const r = L.R * 1.4 + 0.5;
+    for (let i = 0; i < P.hi; i++) if (P.alive[i] && Math.hypot(P.x[i] - L.x, P.y[i] - L.y) < r) P.kill(i);
+    if (this.sel === L) this.sel = null;
+  }
+  W.lesions = W.lesions.filter((L) => !gone.includes(L));
+  W.lesions.forEach((L, i) => { L.id = i; });
+  W.audio.click();
+  W.fx.patchChanged();
+};
 PP.UI.prototype.clampCam = function () {
   const W = this.W, C = W.cam, s = W.area.size / 2;
   C.x = C.vw / 2 >= s ? 0 : PP.clamp(C.x, -s + C.vw / 2, s - C.vw / 2);
@@ -321,11 +351,12 @@ PP.UI.prototype.clampCam = function () {
 };
 PP.UI.prototype.zoomBy = function (k) {
   const W = this.W, C = W.cam;
-  C.zoom = PP.clamp(C.zoom * k, PP.UI.ZMIN, PP.UI.ZMAX);
+  C.zoom = PP.clamp(C.zoom * k, this.zmin(), PP.UI.ZMAX);
   C.vw = W.area.view / C.zoom; C.vh = (C.vw * C.ch) / C.cw;
   this.clampCam();
 };
 PP.UI.prototype.setPlace = function (type) {
+  if (type && this.erasing) this.setErase(false);
   this.placeType = type;
   this.$('addsel').value = type || '';
   this.canvas.classList.toggle('placing', !!type);
