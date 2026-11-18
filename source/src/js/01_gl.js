@@ -148,7 +148,8 @@ PP.GL = function (canvas) {
     if (!count) return;
     gl.bindVertexArray(this.instVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, count * 16), gl.DYNAMIC_DRAW);
+    if (!this._instCap || this._instCap < count) { this._instCap = Math.max(count, 9000); gl.bufferData(gl.ARRAY_BUFFER, this._instCap * 64, gl.DYNAMIC_DRAW); }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * 16);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
   };
   this.bindTex = function (unit, tex, loc) {

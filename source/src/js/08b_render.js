@@ -30,6 +30,7 @@ PP.Renderer = function (canvas, W) {
   this.heatBytes = new Uint8Array(64 * 64);
   this.heatTex = G.tex(64, 64, { ifmt: gl.R8, fmt: gl.RED, type: gl.UNSIGNED_BYTE });
   this.dummy = G.tex(4, 4, { data: new Uint8Array(64) });
+  this.dyn = 1; this.vsx = 1; this.vsy = 1; this.dbg = +(PP.params.get('dbg') || 0);
   this.physA = null; this.physB = null; this.film = null;
   this.brushes = [];
   this.drops = [];   // lens droplets
@@ -58,23 +59,26 @@ PP.Renderer.prototype.initSSS = function () {
   this.sssOff = off; this.sssW = w;
 };
 
-PP.Renderer.prototype.resize = function () {
+// canvas stays at full size; internal render targets use a resolution step (1, 0.75, 0.55)
+PP.Renderer.prototype.resize = function (ds) {
   const G = this.G, gl = this.gl;
   const cw = Math.max(16, Math.floor(this.canvas.clientWidth * this.scale)), ch = Math.max(16, Math.floor(this.canvas.clientHeight * this.scale));
-  if (this.w === cw && this.h === ch) return;
-  this.w = cw; this.h = ch;
-  this.canvas.width = cw; this.canvas.height = ch;
+  if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
+  this.cw = cw; this.ch = ch;
+  const w = Math.max(16, Math.round(cw * (ds || 1))), h = Math.max(16, Math.round(ch * (ds || 1)));
+  if (this.w === w && this.h === h) return;
+  this.w = w; this.h = h;
   for (const k in this.rt) G.freeTarget(this.rt[k]);
   const F16 = { ifmt: gl.RGBA16F, fmt: gl.RGBA, type: gl.HALF_FLOAT };
   const F16N = { ifmt: gl.RGBA16F, fmt: gl.RGBA, type: gl.HALF_FLOAT, filter: gl.NEAREST };
-  const hw = Math.max(8, cw >> 1), hh = Math.max(8, ch >> 1);
+  const hw = Math.max(8, w >> 1), hh = Math.max(8, h >> 1);
   this.rt.def = G.target(hw, hh, [F16, F16]);
-  this.rt.obj = G.target(cw, ch, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
-  this.rt.objS = G.target(cw, ch, [F16]);
-  this.rt.skin = G.target(cw, ch, [F16, F16, F16]);
-  this.rt.sssA = G.target(cw, ch, [F16]);
-  this.rt.sssB = G.target(cw, ch, [F16]);
-  this.rt.comp = G.target(cw, ch, [F16]);
+  this.rt.obj = G.target(w, h, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
+  this.rt.objS = G.target(w, h, [F16]);
+  this.rt.skin = G.target(w, h, [F16, F16, F16]);
+  this.rt.sssA = G.target(hw, hh, [F16]);
+  this.rt.sssB = G.target(hw, hh, [F16]);
+  this.rt.comp = G.target(w, h, [F16]);
 };
 
 PP.Renderer.prototype.setupWorld = function () {
@@ -229,31 +233,44 @@ PP.Renderer.prototype.uploadLesions = function () {
 PP.Renderer.prototype.contactUniforms = function (prog) {
   const gl = this.gl, C = this.W.phys.contacts;
   const n = Math.min(48, C.length);
-  const a = new Float32Array(48 * 4), b = new Float32Array(48 * 4);
-  for (let i = 0; i < n; i++) { const c = C[i]; a.set([c.x, c.y, c.a, c.fn || 0], i * 4); b.set([c.qx || 0, c.qy || 0, c.suction || 0, 0], i * 4); }
+  const a = this._c0 || (this._c0 = new Float32Array(48 * 4)), b = this._c1 || (this._c1 = new Float32Array(48 * 4));
+  for (let i = 0; i < n; i++) {
+    const c = C[i], o = i * 4;
+    a[o] = c.x; a[o + 1] = c.y; a[o + 2] = c.a; a[o + 3] = c.fn || 0;
+    b[o] = c.qx || 0; b[o + 1] = c.qy || 0; b[o + 2] = c.suction || 0; b[o + 3] = 0;
+  }
   gl.uniform4fv(prog.u.uC0, a); gl.uniform4fv(prog.u.uC1, b); gl.uniform1i(prog.u.uNC, n);
 };
 PP.Renderer.prototype.woundUniforms = function (prog) {
-  const gl = this.gl, Wd = this.W.wounds;
-  const cuts = Wd.cuts.slice(-16), c0 = new Float32Array(64), c1 = new Float32Array(64);
-  cuts.forEach((c, i) => { c0.set([c.ax, c.ay, c.bx, c.by], i * 4); c1.set([c.depth, c.gape, c.clot, this.W.clock - c.t], i * 4); });
-  if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, c0); gl.uniform4fv(prog.u.uCut1, c1); gl.uniform1i(prog.u.uNCut, cuts.length); }
-  const holes = Wd.holes.slice(-8), h0 = new Float32Array(32), h1 = new Float32Array(32);
-  holes.forEach((h, i) => { h0.set([h.x, h.y, h.along, h.across], i * 4); h1.set([h.depth, h.core ? 1 : 0, h.clot, 0], i * 4); });
-  if (prog.u.uHole0) { gl.uniform4fv(prog.u.uHole0, h0); if (prog.u.uHole1) gl.uniform4fv(prog.u.uHole1, h1); gl.uniform1i(prog.u.uNH, holes.length); }
-  const inj = Wd.inj.slice(-8), j0 = new Float32Array(32), j1 = new Float32Array(32);
-  inj.forEach((j, i) => {
-    const e = Wd.epi(j.x, j.y);
-    const R = 5 + 4 * j.vol;
-    const age = this.W.clock - j.t;
-    const wheal = j.kind === 'lido' ? Math.min(0.6, j.vol * 0.5) * Math.exp(-age / 900) : 0.05 * Math.exp(-age / 300);
-    j0.set([j.x, j.y, j.kind === 'lido' ? R * 0.55 : 1.5, j.kind === 'lido' ? e : 0], i * 4); j1.set([wheal, 0, 0, 0], i * 4);
-  });
-  if (prog.u.uInj) { gl.uniform4fv(prog.u.uInj, j0); gl.uniform4fv(prog.u.uInj2, j1); gl.uniform1i(prog.u.uNI, inj.length); }
+  const gl = this.gl, Wd = this.W.wounds, clock = this.W.clock;
+  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
+  const nc = Math.min(16, Wd.cuts.length), oc = Wd.cuts.length - nc;
+  for (let i = 0; i < nc; i++) {
+    const c = Wd.cuts[oc + i], o = i * 4;
+    B.c0[o] = c.ax; B.c0[o + 1] = c.ay; B.c0[o + 2] = c.bx; B.c0[o + 3] = c.by;
+    B.c1[o] = c.depth; B.c1[o + 1] = c.gape; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+  }
+  if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
+  const nh = Math.min(8, Wd.holes.length), oh = Wd.holes.length - nh;
+  for (let i = 0; i < nh; i++) {
+    const h = Wd.holes[oh + i], o = i * 4;
+    B.h0[o] = h.x; B.h0[o + 1] = h.y; B.h0[o + 2] = h.along; B.h0[o + 3] = h.across;
+    B.h1[o] = h.depth; B.h1[o + 1] = h.core ? 1 : 0; B.h1[o + 2] = h.clot; B.h1[o + 3] = 0;
+  }
+  if (prog.u.uHole0) { gl.uniform4fv(prog.u.uHole0, B.h0); if (prog.u.uHole1) gl.uniform4fv(prog.u.uHole1, B.h1); gl.uniform1i(prog.u.uNH, nh); }
+  const ni = Math.min(8, Wd.inj.length), oi = Wd.inj.length - ni;
+  for (let i = 0; i < ni; i++) {
+    const j = Wd.inj[oi + i], o = i * 4;
+    const lido = j.kind === 'lido';
+    const R = 5 + 4 * j.vol, age = clock - j.t;
+    B.j0[o] = j.x; B.j0[o + 1] = j.y; B.j0[o + 2] = lido ? R * 0.55 : 1.5; B.j0[o + 3] = lido ? Wd.epi(j.x, j.y) : 0;
+    B.j1[o] = lido ? Math.min(0.6, j.vol * 0.5) * Math.exp(-age / 900) : 0.05 * Math.exp(-age / 300);
+  }
+  if (prog.u.uInj) { gl.uniform4fv(prog.u.uInj, B.j0); gl.uniform4fv(prog.u.uInj2, B.j1); gl.uniform1i(prog.u.uNI, ni); }
   if (prog.u.uPun) {
-    const pu = Wd.punct.slice(-32), p0 = new Float32Array(128);
-    pu.forEach((p, i) => p0.set([p.x, p.y, p.r * (1 - 0.5 * p.clot), 0], i * 4));
-    gl.uniform4fv(prog.u.uPun, p0); gl.uniform1i(prog.u.uNP, pu.length);
+    const np = Math.min(32, Wd.punct.length), op = Wd.punct.length - np;
+    for (let i = 0; i < np; i++) { const p = Wd.punct[op + i], o = i * 4; B.p0[o] = p.x; B.p0[o + 1] = p.y; B.p0[o + 2] = p.r * (1 - 0.5 * p.clot); }
+    gl.uniform4fv(prog.u.uPun, B.p0); gl.uniform1i(prog.u.uNP, np);
   }
 };
 PP.Renderer.prototype.camUniforms = function (prog, w, h) {
@@ -262,19 +279,51 @@ PP.Renderer.prototype.camUniforms = function (prog, w, h) {
   gl.uniform2f(prog.u.uView, C.vw, C.vh);
   if (prog.u.uRes) gl.uniform2f(prog.u.uRes, w, h);
   if (prog.u.uPatch) gl.uniform1f(prog.u.uPatch, this.W.area.size);
+  if (prog.u.uVSc) gl.uniform2f(prog.u.uVSc, this.vsx, this.vsy);
 };
 
 // brush ops into the film decal texture: kind -> channel colour
 PP.Renderer.prototype.brush = function (x, y, r, rgba, mode) { if (this.brushes.length < 40000) this.brushes.push({ x, y, r, c: rgba, mode: mode || 'add' }); };
 
-PP.Renderer.prototype.render = function (dt) {
+// GPU timing (when the browser exposes it) for the dynamic-resolution controller
+PP.Renderer.prototype.timerBegin = function () {
+  const gl = this.gl;
+  if (this.tq === undefined) { this.tq = gl.getExtension('EXT_disjoint_timer_query_webgl2'); this.tqPool = []; }
+  if (!this.tq || this.tqActive) return;
+  const q = gl.createQuery(); gl.beginQuery(this.tq.TIME_ELAPSED_EXT, q); this.tqActive = q;
+};
+PP.Renderer.prototype.timerEnd = function () {
+  const gl = this.gl;
+  if (!this.tqActive) return;
+  gl.endQuery(this.tq.TIME_ELAPSED_EXT); this.tqPool.push(this.tqActive); this.tqActive = null;
+  while (this.tqPool.length) {
+    const q = this.tqPool[0];
+    if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+    const disjoint = gl.getParameter(this.tq.GPU_DISJOINT_EXT);
+    if (!disjoint) this.gpuMs = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
+    gl.deleteQuery(q); this.tqPool.shift();
+  }
+  if (this.tqPool.length > 6) { gl.deleteQuery(this.tqPool.shift()); }
+};
+
+/* Full frame. Render targets are allocated once at the maximum size; dynamic resolution renders
+   into a scaled sub-viewport (no reallocation hitches) and every screen-space read is scaled by uVS. */
+PP.Renderer.prototype.render = function (dt, fullRes) {
   const G = this.G, gl = this.gl, W = this.W, P = this.P;
-  this.resize();
+  // pick a resolution step; change it at most every 1.5 s so targets are rarely reallocated
+  const want = fullRes ? 1 : (this.dyn || 1) >= 0.9 ? 1 : (this.dyn || 1) >= 0.68 ? 0.75 : 0.55;
+  const now = performance.now();
+  if (this.step === undefined) this.step = want;
+  if (want !== this.step && (now - (this.stepT || 0) > 1500 || fullRes)) { this.step = want; this.stepT = now; }
+  this.resize(this.step);
   const w = this.w, h = this.h;
+  this.aw = w; this.ah = h; this.vsx = 1; this.vsy = 1; this.lastDs = this.step;
+  const dw = this.rt.def.w, dh = this.rt.def.h, sw = this.rt.sssA.w, sh = this.rt.sssA.h;
   W.cam.update(w, h);
   this.uploadLesions();
   const A = W.area;
   const ph = W.phys;
+  this.timerBegin();
 
   // 1. physiology field (ping-pong)
   gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
@@ -296,7 +345,9 @@ PP.Renderer.prototype.render = function (dt) {
       gl.blendEquation(mode === 'add' ? gl.FUNC_ADD : gl.FUNC_REVERSE_SUBTRACT); gl.blendFunc(gl.ONE, gl.ONE);
       for (const b of this.brushes) {
         if (b.mode !== mode) continue;
-        d.set([b.x, b.y, b.r, 0, b.c[0], b.c[1], b.c[2], b.c[3], 0, 0, 0, 0, 0, 0, 0, 0], n * 16); n++;
+        const o = n * 16;
+        d[o] = b.x; d[o + 1] = b.y; d[o + 2] = b.r; d[o + 3] = 0; d[o + 4] = b.c[0]; d[o + 5] = b.c[1]; d[o + 6] = b.c[2]; d[o + 7] = b.c[3];
+        n++;
         if (n === 8000) { G.drawInstances(d, n); n = 0; }
       }
       if (n) G.drawInstances(d, n);
@@ -306,8 +357,8 @@ PP.Renderer.prototype.render = function (dt) {
   }
 
   // 3. deformation (half res)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.def.fb); gl.viewport(0, 0, this.rt.def.w, this.rt.def.h);
-  gl.useProgram(P.def.p); this.camUniforms(P.def, this.rt.def.w, this.rt.def.h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.def.fb); gl.viewport(0, 0, dw, dh);
+  gl.useProgram(P.def.p); this.camUniforms(P.def, dw, dh);
   this.contactUniforms(P.def); this.woundUniforms(P.def);
   gl.uniform1f(P.def.u.uNu, ph.nu); gl.uniform1f(P.def.u.uEn, ph.En); gl.uniform1f(P.def.u.uG, ph.G); gl.uniform1f(P.def.u.uLd, ph.Ld); gl.uniform1f(P.def.u.uHeff, ph.Heff);
   gl.uniform2f(P.def.u.uT, ph.tx, ph.ty);
@@ -316,11 +367,14 @@ PP.Renderer.prototype.render = function (dt) {
   // 4. objects (particles + instruments)
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.obj.fb); gl.viewport(0, 0, w, h);
   gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
-  gl.useProgram(P.obj.p); this.camUniforms(P.obj, w, h);
   const n = this.buildInstances();
-  G.drawInstances(this.instData, n);
-  gl.disable(gl.DEPTH_TEST);
+  if (n) {
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+    gl.useProgram(P.obj.p); this.camUniforms(P.obj, w, h);
+    G.drawInstances(this.instData, n);
+    gl.disable(gl.DEPTH_TEST);
+  }
+  this.lastInst = n;
 
   // 5. fluid smoothing
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.objS.fb); gl.viewport(0, 0, w, h);
@@ -339,7 +393,7 @@ PP.Renderer.prototype.render = function (dt) {
   G.bindTex(10, this.envAtlas, S.u.uEnvP); G.bindTex(11, this.heatTex, S.u.uHeat); G.bindTex(12, this.lesTex, S.u.uLes);
   G.bindTex(14, set.detail, S.u.uDetail);
   gl.activeTexture(gl.TEXTURE13); gl.bindTexture(gl.TEXTURE_2D, this.gridTex.t); gl.uniform1i(S.u.uLGrid, 13);
-  gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4);
+  gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4); gl.uniform1i(S.u.uHasObj, n ? 1 : 0);
   gl.uniform1f(S.u.uTile, set.meta.tile_mm); gl.uniform1f(S.u.uHmm, set.meta.height_mm * W.reliefK);
   gl.uniform1f(S.u.uDetTile, det.meta.tile_mm * W.detScale); gl.uniform1f(S.u.uDetAmt, W.detAmt);
   gl.uniform1f(S.u.uPxMm, w / W.cam.vw); gl.uniform1f(S.u.uTime, W.time);
@@ -350,44 +404,71 @@ PP.Renderer.prototype.render = function (dt) {
   gl.uniform3fv(S.u.uKey, W.keyDir);
   gl.uniform2f(S.u.uT, ph.tx, ph.ty); gl.uniform1f(S.u.uDermis, A.dermis); gl.uniform1f(S.u.uEpi, A.epi);
   gl.uniform1f(S.u.uBloodOn, W.S.blood ? 1 : 0);
-  gl.uniform1i(S.u.uDbg, +(PP.params.get('dbg') || 0));
+  gl.uniform1i(S.u.uDbg, this.dbg);
   // the face scan comes from deep-toned skin; its pore pigment contrast is toned down for lighter skin
   gl.uniform1f(S.u.uDetK, W.curSet === (this.sets && this.sets.deep) ? 0.55 + 0.09 * W.toneIdx : 0.85);
   this.woundUniforms(S);
-  const pd = new Float32Array(32); const pts = W.decals.patches.slice(-8);
-  pts.forEach((q, i) => pd.set([q.x, q.y, q.r, PP.clamp((W.clock - q.t) / 86400, 0, 1)], i * 4));
-  gl.uniform4fv(S.u.uPatchD, pd); gl.uniform1i(S.u.uNPatch, pts.length);
+  const pd = this._pd || (this._pd = new Float32Array(32)); const np = Math.min(8, W.decals.patches.length), opp = W.decals.patches.length - np;
+  for (let i = 0; i < np; i++) { const q = W.decals.patches[opp + i], o = i * 4; pd[o] = q.x; pd[o + 1] = q.y; pd[o + 2] = q.r; pd[o + 3] = PP.clamp((W.clock - q.t) / 86400, 0, 1); }
+  gl.uniform4fv(S.u.uPatchD, pd); gl.uniform1i(S.u.uNPatch, np);
   G.drawFS();
 
-  // 7. subsurface scattering (separable, two passes)
+  // 7. subsurface scattering (separable, half resolution: scattered light is smooth)
   const pxmm = w / W.cam.vw;
   gl.useProgram(P.sss.p);
   gl.uniform1fv(P.sss.u.uOff, this.sssOff); gl.uniform3fv(P.sss.u.uW, this.sssW);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssA.fb);
-  G.bindTex(0, this.rt.skin.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 1 / w, 0); gl.uniform1f(P.sss.u.uPxMm, pxmm);
+  gl.uniform2f(P.sss.u.uVSc, this.vsx, this.vsy); gl.uniform1f(P.sss.u.uPxMm, pxmm);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssA.fb); gl.viewport(0, 0, sw, sh);
+  G.bindTex(0, this.rt.skin.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 1 / w, 0); gl.uniform2f(P.sss.u.uRes, w, h);
   G.drawFS();
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssB.fb);
-  G.bindTex(0, this.rt.sssA.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 0, 1 / h);
+  G.bindTex(0, this.rt.sssA.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 0, 1 / h); gl.uniform2f(P.sss.u.uRes, sw, sh);
   G.drawFS();
 
   // 8. composite
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.comp.fb);
-  gl.useProgram(P.comp.p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.comp.fb); gl.viewport(0, 0, w, h);
+  gl.useProgram(P.comp.p); gl.uniform2f(P.comp.u.uVSc, this.vsx, this.vsy); gl.uniform2f(P.comp.u.uRes, w, h); gl.uniform1i(P.comp.u.uDbgC, this.dbg);
   G.bindTex(0, this.rt.sssB.texs[0], P.comp.u.uSss); G.bindTex(1, this.rt.skin.texs[1], P.comp.u.uAlb); G.bindTex(2, this.rt.skin.texs[2], P.comp.u.uSpec);
   G.bindTex(3, this.rt.skin.texs[0], P.comp.u.uIrr0);
   G.drawFS();
 
   // 9. post to screen
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h);
-  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, w, h);
+  this.present(true);
+  this.timerEnd();
+};
+
+// post pass only (cheap): re-present the last composite (film grain keeps moving)
+PP.Renderer.prototype.present = function (inFrame) {
+  const G = this.G, gl = this.gl, W = this.W, P = this.P;
+  if (!this.aw) return;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.cw, this.ch);
+  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, this.aw, this.ah);
   G.bindTex(0, this.rt.comp.texs[0], PO.u.uC);
-  gl.uniform1f(PO.u.uTime, W.time); gl.uniform1f(PO.u.uDof, pxmm * 0.022);
-  gl.uniform1f(PO.u.uAspect, w / h);
-  const d0 = new Float32Array(96), d1 = new Float32Array(96);
-  const drops = this.drops.slice(-24);
-  drops.forEach((d, i) => { d0.set([d.u, d.v, d.r, d.a], i * 4); d1.set([d.m, 0, 0, 0], i * 4); });
-  gl.uniform4fv(PO.u.uDrop, d0); gl.uniform4fv(PO.u.uDrop2, d1); gl.uniform1i(PO.u.uND, drops.length);
+  gl.uniform1f(PO.u.uTime, W.time); gl.uniform1f(PO.u.uDof, (this.aw / W.cam.vw) * 0.022);
+  gl.uniform1f(PO.u.uAspect, this.cw / this.ch);
+  const d0 = this._d0 || (this._d0 = new Float32Array(96)), d1 = this._d1 || (this._d1 = new Float32Array(96));
+  const nd = Math.min(24, this.drops.length), od = this.drops.length - nd;
+  for (let i = 0; i < nd; i++) { const d = this.drops[od + i], o = i * 4; d0[o] = d.u; d0[o + 1] = d.v; d0[o + 2] = d.r; d0[o + 3] = d.a; d1[o] = d.m; }
+  gl.uniform4fv(PO.u.uDrop, d0); gl.uniform4fv(PO.u.uDrop2, d1); gl.uniform1i(PO.u.uND, nd);
   G.drawFS();
+};
+
+// draw every program once with representative data so drivers finish lazy compilation during loading
+PP.Renderer.prototype.warm = function () {
+  const W = this.W, T = W.tools, P = W.parts;
+  W.phys.contacts.push({ x: 0, y: 0, a: 4, fn: 1, qx: 1, qy: 0 }, { x: 3, y: 0, a: 2, suction: 40 });
+  T.nPrim = 0;
+  T.primRaw([0, 0, 1, 1, 0, 0, 1, 1, 0, PP.MATOBJ.chrome, 0, 0, 0.8, 0.8, 0.8, 0]);
+  T.primRaw([0, 0, 1, 1, 5, 5, 6, 1.5, 1, PP.MATOBJ.nitrile, 0, 0, 0.3, 0.2, 0.6, 0]);
+  T.primRaw([0, 0, 1, 0, 3, 3, 0.5, 0.2, 2, PP.MATOBJ.gauze, 0, 0, 0.9, 0.9, 0.9, 0.3]);
+  T.primRaw([0, 0, 0.5, 0.08, 4, 0, 2, 0, 3, PP.MATOBJ.chrome, 3, 1, 2.2, 0, 0, 0]);
+  const a = P.spawn(1, 1, 0.3, 0.3, PP.MAT.blood), b = P.spawn(1.5, 1, 0.3, 0.3, PP.MAT.pus), c = P.spawn(1.8, 1, 0.3, 0.3, PP.MAT.pus);
+  if (b >= 0 && c >= 0) P.link(b, c, 0.3, 0.1, 2);
+  this.brush(0, 0, 1, [0, 0, 0.001, 0], 'add');
+  this.drops.push({ u: 0.5, v: 0.5, r: 0.001, a: 0.01, m: 0, vy: 0 });
+  this.render(1 / 60, true);
+  W.phys.contacts.length = 0; T.nPrim = 0; P.clear(); this.drops.length = 0;
+  this.render(1 / 60, true);
 };
 
 // particles + tool primitives -> instance buffer
@@ -395,25 +476,29 @@ PP.Renderer.prototype.buildInstances = function () {
   const W = this.W, P = W.parts, d = this.instData;
   let n = 0;
   const maxN = 9000;
+  const put = (ax, ay, az, ar, bx, by, bz, br, ty, m, cr, cg, cb) => {
+    const o = n * 16;
+    d[o] = ax; d[o + 1] = ay; d[o + 2] = az; d[o + 3] = ar; d[o + 4] = bx; d[o + 5] = by; d[o + 6] = bz; d[o + 7] = br;
+    d[o + 8] = ty; d[o + 9] = m; d[o + 10] = 0; d[o + 11] = 0; d[o + 12] = cr; d[o + 13] = cg; d[o + 14] = cb; d[o + 15] = 0;
+    n++;
+  };
   for (let i = 0; i < P.hi && n < maxN - 200; i++) {
     if (!P.alive[i]) continue;
-    const j = P.next[i];
-    const m = P.mat[i];
-    if (j >= 0 && P.alive[j]) {
-      d.set([P.x[i], P.y[i], P.z[i], P.r[i], P.x[j], P.y[j], P.z[j], P.r[j], 1, m, 0, 0, P.cr[i], P.cg[i], P.cb[i], 0], n * 16); n++;
-    } else if (P.prev[i] < 0) {
+    const j = P.next[i], m = P.mat[i];
+    if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i], P.r[i], P.x[j], P.y[j], P.z[j], P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
+    else if (P.prev[i] < 0) {
       // free particle: liquids flatten into a sessile bead on the skin
-      let r = P.r[i], z = P.z[i];
-      if (P.onSkin[i] && P.isLiquid(m)) { z = z - r * 0.55; }
-      d.set([P.x[i], P.y[i], z, r, P.x[i], P.y[i], z, r, 0, m, 0, 0, P.cr[i], P.cg[i], P.cb[i], 0], n * 16); n++;
+      const r = P.r[i], z = P.onSkin[i] && P.isLiquid(m) ? P.z[i] - r * 0.55 : P.z[i];
+      put(P.x[i], P.y[i], z, r, P.x[i], P.y[i], z, r, 0, m, P.cr[i], P.cg[i], P.cb[i]);
     }
   }
   const T = W.tools;
   if (T.nPrim) { d.set(T.prims.subarray(0, T.nPrim * 16), n * 16); n += T.nPrim; }
   // draped splatter shield (loose gauze) over the active lesion while squeezing
   if (W.S.shield && W.phys.contacts.length && W.activeLesion) {
-    const L = W.activeLesion;
-    d.set([L.x, L.y, 9, 0, Math.max(L.R * 2.2, 6), Math.max(L.R * 2.2, 6), 0.4, 0.3, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.6], n * 16); n++;
+    const L = W.activeLesion, g = W.decals.gauzeCol, e = Math.max(L.R * 2.2, 6);
+    put(L.x, L.y, 9, 0, e, e, 0.4, 0.3, 2, PP.MATOBJ.gauze, g[0], g[1], g[2]);
+    d[(n - 1) * 16 + 15] = 0.6;
   }
   return n;
 };

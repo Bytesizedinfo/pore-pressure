@@ -8,7 +8,9 @@ out vec2 vUv;
 void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
 
 PP.SH.common = `
-uniform vec2 uCam; uniform vec2 uView; uniform vec2 uRes; uniform float uPatch;
+uniform vec2 uCam; uniform vec2 uView; uniform vec2 uRes; uniform float uPatch; uniform vec2 uVSc;
+// screen-space render targets are only partly used under dynamic resolution
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 vec2 worldOf(vec2 uv){ return uCam + (uv-0.5)*uView; }
 vec2 uvOf(vec2 w){ return (w-uCam)/uView + 0.5; }
 vec2 patchUv(vec2 w){ return w/uPatch + 0.5; }
@@ -190,18 +192,18 @@ PP.SH.smoothFS = PP.SH.common + `
 in vec2 vUv; layout(location=0) out vec4 o0; uniform sampler2D uObj; uniform float uPxMm;
 bool isFluid(float m){ return m>0.5 && m<16.5 && abs(m-10.0)>0.5 && abs(m-12.0)>0.5 && abs(m-8.0)>0.5; }
 void main(){
-  vec4 c=texture(uObj,vUv);
+  vec4 c=texS(uObj, vUv);
   if(!isFluid(c.y)){ o0=c; return; }
   vec2 px=1.0/uRes; float r=clamp(uPxMm*0.08,1.0,3.0);
   float s=0.0, w=0.0;
   for(int j=-2;j<=2;j++) for(int i=-2;i<=2;i++){
-    vec4 q=texture(uObj, vUv+vec2(i,j)*px*r);
+    vec4 q=texS(uObj, vUv+vec2(i,j)*px*r);
     float k = exp(-float(i*i+j*j)*0.35);
     if(isFluid(q.y)){ s+=q.x*k; w+=k; } else { s+=(c.x-0.08)*k; w+=k; }
   }
   float h=s/w;
-  float hx=texture(uObj,vUv+vec2(px.x*r,0)).x, hy=texture(uObj,vUv+vec2(0,px.y*r)).x;
-  float hxm=texture(uObj,vUv-vec2(px.x*r,0)).x, hym=texture(uObj,vUv-vec2(0,px.y*r)).x;
+  float hx=texS(uObj, vUv+vec2(px.x*r,0)).x, hy=texS(uObj, vUv+vec2(0,px.y*r)).x;
+  float hxm=texS(uObj, vUv-vec2(px.x*r,0)).x, hym=texS(uObj, vUv-vec2(0,px.y*r)).x;
   vec2 g=vec2(hx-hxm, hy-hym)/(2.0*r/uPxMm);
   g = clamp(g, -6.0, 6.0);
   vec3 n=normalize(vec3(-g*0.7 + c.zw*0.3*vec2(1.0), 1.0));
@@ -225,9 +227,11 @@ void main(){
   float target = clamp(1.0 - pr/10.0, 0.12, 1.0)*(1.0-0.65*epi) + su/65.0*0.9;
   float v=s.r;
   float tau = target<v ? 0.12 : 0.7;
-  v += (target + 0.55*s.g - v)*(1.0-exp(-uDt/tau));
+  // reactive hyperaemia only once the pressure is off (not while still compressed)
+  float hyper = 0.45*s.g*(1.0 - smoothstep(2.0, 8.0, pr));
+  v += (target + hyper - v)*(1.0-exp(-uDt/tau));
   float debt = s.g + uDt*(max(0.0,1.0-v)*0.3) ; debt *= exp(-uDt/75.0);
-  float irr = s.b + uDt*(max(0.0,pr-6.0)/900.0 + su/2600.0); irr *= exp(-uDt/(6.0*3600.0)); irr=min(irr,1.2);
+  float irr = s.b + uDt*(max(0.0,pr-12.0)/2400.0 + su/4000.0); irr *= exp(-uDt/(6.0*3600.0)); irr=min(irr,0.8);
   float br = s.a + uDt*max(0.0, su-33.0)/22.0*step(0.0,su-1.0)*0.35; br *= exp(-uDt/(5.0*86400.0)); br=min(br,1.5);
   o=vec4(v, min(debt,1.0), irr, br);
 }`;
@@ -261,6 +265,7 @@ uniform vec2 uT; uniform float uDermis, uEpi;
 uniform vec4 uPatchD[8]; uniform int uNPatch;
 uniform float uBloodOn;
 uniform int uDbg;
+uniform int uHasObj;
 uniform float uDetK;
 
 vec3 shEval(vec3 n){
@@ -392,11 +397,11 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   if(cm>o.cMix){ o.cCol=cc; } o.cMix=max(o.cMix,cm);
 }
 
-float objH(vec2 uv){ vec4 o=texture(uObj,uv); return o.y>0.5 ? o.x : -1e3; }
+float objH(vec2 uv){ vec4 o=texS(uObj, uv); return o.y>0.5 ? o.x : -1e3; }
 
 void main(){
   vec2 p = worldOf(vUv);
-  vec4 d0 = texture(uDef0, vUv), d1 = texture(uDef1, vUv);
+  vec4 d0 = texS(uDef0, vUv), d1 = texS(uDef1, vUv);
   vec2 X = p - d0.xy;
   float pxmm = uPxMm;
   // ---- lesions (looked up through a coarse grid)
@@ -453,8 +458,8 @@ void main(){
   float wrH = A*sin(ph);
   // macro deformation gradient (half-res field)
   vec2 px = vec2(1.0)/uRes*2.0;
-  float wxp=texture(uDef0,vUv+vec2(px.x,0)).z, wyp=texture(uDef0,vUv+vec2(0,px.y)).z;
-  float wxm=texture(uDef0,vUv-vec2(px.x,0)).z, wym=texture(uDef0,vUv-vec2(0,px.y)).z;
+  float wxp=texS(uDef0, vUv+vec2(px.x,0)).z, wyp=texS(uDef0, vUv+vec2(0,px.y)).z;
+  float wxm=texS(uDef0, vUv-vec2(px.x,0)).z, wym=texS(uDef0, vUv-vec2(0,px.y)).z;
   vec2 gDef = vec2(wxp-wxm, wyp-wym)/(2.0*px*uView);
   float H = d0.z + lo.h + wrH + (nr.z-0.5)*uHmm*amp - wd;
   vec2 grad = gDef + gL + gMicro + gWr;
@@ -468,8 +473,8 @@ void main(){
   float heat = texture(uHeat, patchUv(p)).r;
   float m = uTone.x + uToneA.x*cn.x + uTone.x*0.10*(fbm(X*0.045)-0.5);
   float perf = ph0.r;
-  float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.35*max(0.0,perf-1.0);
-  hem += lo.hem + 0.45*ph0.b + 0.12*clamp((heat-33.0)/7.0,0.0,1.0) + 0.25*lip + 0.4*pun;
+  float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.22*max(0.0,perf-1.0);
+  hem += lo.hem + 0.22*ph0.b + 0.12*clamp((heat-33.0)/7.0,0.0,1.0) + 0.25*lip + 0.4*pun;
   float deox = lo.deox + ph0.a*0.6;
   float sh = uTone.z + uToneA.z*cn.z*0.6;
   vec3 OD = m*uVM + hem*uVH + sh*uVS + deox*vec3(0.62,0.68,0.42);
@@ -521,7 +526,7 @@ void main(){
   // cast shadows from instruments / fluids onto the skin (screen-space height march toward the key light)
   float sh2=0.0; vec3 Lk=normalize(uKey);
   vec2 stepUv = (Lk.xy/max(Lk.z,0.25))/uView;
-  for(int k=1;k<=14;k++){
+  for(int k=1;k<=14 && uHasObj==1;k++){
     float t = pow(float(k)/14.0, 1.6)*28.0;
     vec2 q = vUv + stepUv*t; float oh = objH(q);
     float rayH = H + t*1.0;
@@ -529,7 +534,7 @@ void main(){
   }
   sh2 *= 0.62;   // the key is a large softbox: penumbrae are wide and never fully dark
   float ao = lo.ao;
-  for(int k=0;k<6;k++){ float an=float(k)*1.047; vec2 q=vUv+vec2(cos(an),sin(an))*1.6/uView; float oh=objH(q); ao -= clamp((oh-H)*0.0+ (oh>H? 0.12*exp(-max(oh-H,0.0)*0.5):0.0),0.0,0.12); }
+  for(int k=0;k<6 && uHasObj==1;k++){ float an=float(k)*1.047; vec2 q=vUv+vec2(cos(an),sin(an))*1.6/uView; float oh=objH(q); ao -= clamp((oh-H)*0.0+ (oh>H? 0.12*exp(-max(oh-H,0.0)*0.5):0.0),0.0,0.12); }
   ao *= 1.0 - 0.35*clamp((0.5-nr.z)*2.0,0.0,1.0)*(1.0-stretch);   // cavity occlusion in furrows/pores
   ao *= 1.0 - 0.4*clamp(nr.w,0.0,1.0)*(1.0-stretch);                 // pores (scan pore mask)
   vec3 irr = (fill*mix(1.0,0.7,sh2) + keyD*(1.0-sh2)) * ao;
@@ -548,9 +553,9 @@ void main(){
   if(patchM>0.0){ float whiten=clamp(patchAge,0.0,1.0); alb=mix(alb, mix(vec3(0.82,0.66,0.52), vec3(0.93,0.9,0.86), whiten), patchM*(0.45+0.5*whiten)); spec += patchM*0.03*envSpec(R,0.12); }
 
   // ---- objects (fluids, extracted material, instruments) over the skin
-  vec4 ob = texture(uObj, vUv); vec4 oc = texture(uObjCol, vUv);
+  vec4 ob = texS(uObj, vUv); vec4 oc = texS(uObjCol, vUv);
   oIrr = vec4(irr, 1.0); oAlb = vec4(alb, skinH); oSpec = vec4(spec, 0.0);
-  if(uDbg>0){ vec3 dc = uDbg==1 ? vec3(nr.z) : uDbg==2 ? N*0.5+0.5 : uDbg==3 ? alb : uDbg==4 ? irr*0.5 : uDbg==5 ? vec3(ch.rgb) : spec*4.0; oIrr=vec4(0.0); oAlb=vec4(0.0,0.0,0.0,0.0); oSpec=vec4(dc,1.0); return; }
+  if(uDbg>0 && uDbg<7){ vec3 dc = uDbg==1 ? vec3(nr.z) : uDbg==2 ? N*0.5+0.5 : uDbg==3 ? alb : uDbg==4 ? irr*0.5 : uDbg==5 ? vec3(ch.rgb) : spec*4.0; oIrr=vec4(0.0); oAlb=vec4(0.0,0.0,0.0,0.0); oSpec=vec4(dc,1.0); return; }
   float matI = ob.y;
   if(matI > 0.5 && ob.x > skinH - 0.01){
     int mat = int(matI+0.5);
@@ -615,14 +620,15 @@ void main(){
 
 /* ---------- separable SSS (sum-of-Gaussians skin profile, GPU Gems 3 ch.14) ---------- */
 PP.SH.sssFS = `
-in vec2 vUv; out vec4 o; uniform sampler2D uIrr; uniform vec2 uDir; uniform float uPxMm;
+in vec2 vUv; out vec4 o; uniform sampler2D uIrr; uniform vec2 uDir; uniform float uPxMm; uniform vec2 uVSc; uniform vec2 uRes;
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 uniform float uOff[25]; uniform vec3 uW[25];
 void main(){
-  vec4 c=texture(uIrr,vUv); if(c.a<0.5){ o=c; return; }
+  vec4 c=texS(uIrr,vUv); if(c.a<0.5){ o=c; return; }
   vec3 s=vec3(0.0), ws=vec3(0.0);
   for(int i=0;i<25;i++){
     vec2 uv=vUv+uDir*uOff[i]*uPxMm;
-    vec4 q=texture(uIrr,uv);
+    vec4 q=texS(uIrr,uv);
     float m=q.a; vec3 w=uW[i]*m;
     s+=q.rgb*w; ws+=w;
   }
@@ -631,19 +637,21 @@ void main(){
 
 /* ---------- composite + post: DoF, lens droplets, ACES, vignette, grain ---------- */
 PP.SH.compFS = `
-in vec2 vUv; out vec4 o; uniform sampler2D uSss, uAlb, uSpec, uIrr0;
+in vec2 vUv; out vec4 o; uniform sampler2D uSss, uAlb, uSpec, uIrr0; uniform vec2 uVSc; uniform vec2 uRes; uniform int uDbgC;
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 void main(){
-  vec4 a=texture(uAlb,vUv), s=texture(uSpec,vUv), i=texture(uSss,vUv), i0=texture(uIrr0,vUv);
+  vec4 a=texS(uAlb,vUv), s=texS(uSpec,vUv), i=texS(uSss,vUv), i0=texS(uIrr0,vUv);
   // 65% diffused light + 35% direct: millimetre-scale shape stays legible, skin still reads soft
   vec3 irr = i0.a>0.5 ? mix(i0.rgb, i.rgb, 0.65) : i.rgb;
   vec3 c = s.a>0.5 ? s.rgb : a.rgb*irr + s.rgb;
+  if(uDbgC==7) c=i.rgb*0.6; else if(uDbgC==8) c=i0.rgb*0.6; else if(uDbgC==9) c=vec3(i.a,i0.a,s.a);
   o=vec4(c, a.a);
 }`;
 PP.SH.postFS = PP.SH.common + `
 in vec2 vUv; out vec4 o; uniform sampler2D uC; uniform float uPxMm2, uTime, uDof;
 uniform vec4 uDrop[24]; uniform vec4 uDrop2[24]; uniform int uND; uniform float uAspect;
 vec3 aces(vec3 x){ const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14; return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0); }
-vec3 tap(vec2 uv){ return texture(uC,uv).rgb; }
+vec3 tap(vec2 uv){ return texS(uC, uv).rgb; }
 void main(){
   vec2 uv=vUv;
   // lens droplets refract (inverted, magnified view), tint and blur what is behind them
@@ -654,17 +662,17 @@ void main(){
       tint = d2.x<0.5 ? vec3(0.95,0.32,0.28)*(0.55+0.45*hz) : d2.x<1.5 ? vec3(0.97,0.93,0.78)*(0.8+0.2*hz) : vec3(1.0);
       tint = mix(vec3(1.0), tint, d.w);
     } }
-  vec4 c0=texture(uC,uv);
+  vec4 c0=texS(uC, uv);
   float coc = clamp(abs(c0.a-0.0)*uDof, 0.0, 14.0);
   vec3 c=c0.rgb;
   if(coc>0.8){ vec3 s=vec3(0.0); float w=0.0;
-    for(int k=0;k<16;k++){ float an=float(k)*2.39996; float rr=sqrt((float(k)+0.5)/16.0)*coc; vec2 off=vec2(cos(an),sin(an))*rr/uRes; vec4 q=texture(uC,uv+off);
+    for(int k=0;k<16;k++){ float an=float(k)*2.39996; float rr=sqrt((float(k)+0.5)/16.0)*coc; vec2 off=vec2(cos(an),sin(an))*rr/uRes; vec4 q=texS(uC, uv+off);
       float qc=clamp(abs(q.a)*uDof,0.0,14.0); float ww = qc>=rr*0.7 ? 1.0 : 0.2; s+=q.rgb*ww; w+=ww; }
     c = s/w; }
   if(dropM>0.0){ vec3 b=vec3(0.0); for(int k=0;k<8;k++){ float an=float(k)*0.785; b+=tap(duv+vec2(cos(an),sin(an))*0.004); } b/=8.0; c=mix(c, b*tint, dropM); c += dropM*0.04; }
   // chromatic aberration toward the frame edge
   vec2 cd=(uv-0.5); float ca=dot(cd,cd)*0.004;
-  c.r = mix(c.r, texture(uC, uv+cd*ca).r, 0.6); c.b = mix(c.b, texture(uC, uv-cd*ca).b, 0.6);
+  c.r = mix(c.r, texS(uC, uv+cd*ca).r, 0.6); c.b = mix(c.b, texS(uC, uv-cd*ca).b, 0.6);
   c = aces(c*1.0);
   c = pow(c, vec3(1.0/2.2));
   float vig = 1.0 - 0.32*pow(length(cd*vec2(1.0,0.85))*1.25, 2.4);

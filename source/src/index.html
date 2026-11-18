@@ -99,6 +99,8 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #addsel { max-width: 170px; }
 #gl.placing { cursor: copy; }
 #gl.erasing { cursor: cell; }
+#gl.grab { cursor: grab; } #gl.grabbing { cursor: grabbing; }
+#perf { font: 500 11px/1.2 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* toasts */
 #toasts { position: fixed; top: calc(70px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: grid; gap: 6px; pointer-events: none; width: min(520px, calc(100vw - 32px)); z-index: 5; }
@@ -173,6 +175,7 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
       <div class="meter">Force<div class="bar" id="forcebar"><i></i></div></div>
       <div class="meter">Pain<div class="bar" id="painbar"><i></i></div></div>
       <div id="readout">—</div>
+      <div id="perf" hidden></div>
       <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Zoom all the way out">Fit</button></div>
     </section>
   </div>

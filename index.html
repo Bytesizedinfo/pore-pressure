@@ -106,6 +106,8 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #addsel { max-width: 170px; }
 #gl.placing { cursor: copy; }
 #gl.erasing { cursor: cell; }
+#gl.grab { cursor: grab; } #gl.grabbing { cursor: grabbing; }
+#perf { font: 500 11px/1.2 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* toasts */
 #toasts { position: fixed; top: calc(70px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: grid; gap: 6px; pointer-events: none; width: min(520px, calc(100vw - 32px)); z-index: 5; }
@@ -180,6 +182,7 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
       <div class="meter">Force<div class="bar" id="forcebar"><i></i></div></div>
       <div class="meter">Pain<div class="bar" id="painbar"><i></i></div></div>
       <div id="readout">—</div>
+      <div id="perf" hidden></div>
       <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Zoom all the way out">Fit</button></div>
     </section>
   </div>
@@ -411,7 +414,8 @@ PP.GL = function (canvas) {
     if (!count) return;
     gl.bindVertexArray(this.instVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, count * 16), gl.DYNAMIC_DRAW);
+    if (!this._instCap || this._instCap < count) { this._instCap = Math.max(count, 9000); gl.bufferData(gl.ARRAY_BUFFER, this._instCap * 64, gl.DYNAMIC_DRAW); }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * 16);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
   };
   this.bindTex = function (unit, tex, loc) {
@@ -606,6 +610,7 @@ PP.LTYPES = {
 };
 
 PP.TOOLS = [
+  { id: 'move', name: 'Move', group: 'Hands', key: 'M', opt: 'Drag to move around the skin. Hold Space to do the same with any instrument; right-drag works too.' },
   { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Scroll to set spread; Q/E rotate. On touch, pinch with two fingers.' },
   { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid.' },
   { id: 'loop', name: 'Comedone loop', group: 'Extraction', key: '3', opt: 'Centre the ring over the pore and hold. Scroll changes loop size (1.5 / 2.5 mm).' },
@@ -627,6 +632,7 @@ PP.TOOLS = [
 ];
 
 PP.ICONS = {
+  move: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   fingers: '<path d="M7 20c-2-3-2-7 0-10l2-5c.5-1.3 2.5-.8 2 .6L10 10l4-6c.8-1.1 2.4-.2 1.8 1L13 11l4-3c1-.7 2.1.5 1.3 1.5L14 15c-1.5 2-3 4-7 5z"/>',
   swabs: '<path d="M4 20 13 11M11 20l9-9"/><ellipse cx="15" cy="9" rx="2.6" ry="1.8" transform="rotate(-45 15 9)"/><ellipse cx="21" cy="9" rx="2.2" ry="1.6" transform="rotate(-45 21 9)"/>',
   loop: '<circle cx="16" cy="7" r="3.2"/><path d="M14 10 4 20"/>',
@@ -994,12 +1000,14 @@ PP.Particles = function (cap) {
     }
     // bookkeeping: lens hits, bounds, settling
     const half = W.area.size / 2 + 4;
+    let mv = 0;
     for (let i = 0; i < hi; i++) {
       if (!this.alive[i]) continue;
       if (this.z[i] > W.lensZ) { if (W.onLens) W.onLens(i); this.kill(i); continue; }
       if (Math.abs(this.x[i]) > half || Math.abs(this.y[i]) > half || this.z[i] < -20) { this.kill(i); continue; }
       const sp = Math.abs(this.x[i] - this.px[i]) + Math.abs(this.y[i] - this.py[i]) + Math.abs(this.z[i] - this.pz[i]);
       this.still[i] = sp < 0.002 ? this.still[i] + dt : 0;
+      if (sp > mv) mv = sp;
       if (this.onSkin[i] && this.isLiquid(this.mat[i]) && W.onTrail && sp > 0.01) W.onTrail(i);
       // settled small liquid droplets soak into the film decal (keeps the particle budget)
       if (this.isLiquid(this.mat[i]) && this.onSkin[i] && this.still[i] > 2.5 && this.r[i] < 0.45 && this.next[i] < 0) {
@@ -1008,6 +1016,7 @@ PP.Particles = function (cap) {
       }
     }
     while (this.hi > 0 && !this.alive[this.hi - 1]) this.hi--;
+    this.moving = mv > 0.0015;
   };
 
   this.nearest = function (x, y, maxD, filter) {
@@ -2365,7 +2374,9 @@ out vec2 vUv;
 void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
 
 PP.SH.common = `
-uniform vec2 uCam; uniform vec2 uView; uniform vec2 uRes; uniform float uPatch;
+uniform vec2 uCam; uniform vec2 uView; uniform vec2 uRes; uniform float uPatch; uniform vec2 uVSc;
+// screen-space render targets are only partly used under dynamic resolution
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 vec2 worldOf(vec2 uv){ return uCam + (uv-0.5)*uView; }
 vec2 uvOf(vec2 w){ return (w-uCam)/uView + 0.5; }
 vec2 patchUv(vec2 w){ return w/uPatch + 0.5; }
@@ -2547,18 +2558,18 @@ PP.SH.smoothFS = PP.SH.common + `
 in vec2 vUv; layout(location=0) out vec4 o0; uniform sampler2D uObj; uniform float uPxMm;
 bool isFluid(float m){ return m>0.5 && m<16.5 && abs(m-10.0)>0.5 && abs(m-12.0)>0.5 && abs(m-8.0)>0.5; }
 void main(){
-  vec4 c=texture(uObj,vUv);
+  vec4 c=texS(uObj, vUv);
   if(!isFluid(c.y)){ o0=c; return; }
   vec2 px=1.0/uRes; float r=clamp(uPxMm*0.08,1.0,3.0);
   float s=0.0, w=0.0;
   for(int j=-2;j<=2;j++) for(int i=-2;i<=2;i++){
-    vec4 q=texture(uObj, vUv+vec2(i,j)*px*r);
+    vec4 q=texS(uObj, vUv+vec2(i,j)*px*r);
     float k = exp(-float(i*i+j*j)*0.35);
     if(isFluid(q.y)){ s+=q.x*k; w+=k; } else { s+=(c.x-0.08)*k; w+=k; }
   }
   float h=s/w;
-  float hx=texture(uObj,vUv+vec2(px.x*r,0)).x, hy=texture(uObj,vUv+vec2(0,px.y*r)).x;
-  float hxm=texture(uObj,vUv-vec2(px.x*r,0)).x, hym=texture(uObj,vUv-vec2(0,px.y*r)).x;
+  float hx=texS(uObj, vUv+vec2(px.x*r,0)).x, hy=texS(uObj, vUv+vec2(0,px.y*r)).x;
+  float hxm=texS(uObj, vUv-vec2(px.x*r,0)).x, hym=texS(uObj, vUv-vec2(0,px.y*r)).x;
   vec2 g=vec2(hx-hxm, hy-hym)/(2.0*r/uPxMm);
   g = clamp(g, -6.0, 6.0);
   vec3 n=normalize(vec3(-g*0.7 + c.zw*0.3*vec2(1.0), 1.0));
@@ -2582,9 +2593,11 @@ void main(){
   float target = clamp(1.0 - pr/10.0, 0.12, 1.0)*(1.0-0.65*epi) + su/65.0*0.9;
   float v=s.r;
   float tau = target<v ? 0.12 : 0.7;
-  v += (target + 0.55*s.g - v)*(1.0-exp(-uDt/tau));
+  // reactive hyperaemia only once the pressure is off (not while still compressed)
+  float hyper = 0.45*s.g*(1.0 - smoothstep(2.0, 8.0, pr));
+  v += (target + hyper - v)*(1.0-exp(-uDt/tau));
   float debt = s.g + uDt*(max(0.0,1.0-v)*0.3) ; debt *= exp(-uDt/75.0);
-  float irr = s.b + uDt*(max(0.0,pr-6.0)/900.0 + su/2600.0); irr *= exp(-uDt/(6.0*3600.0)); irr=min(irr,1.2);
+  float irr = s.b + uDt*(max(0.0,pr-12.0)/2400.0 + su/4000.0); irr *= exp(-uDt/(6.0*3600.0)); irr=min(irr,0.8);
   float br = s.a + uDt*max(0.0, su-33.0)/22.0*step(0.0,su-1.0)*0.35; br *= exp(-uDt/(5.0*86400.0)); br=min(br,1.5);
   o=vec4(v, min(debt,1.0), irr, br);
 }`;
@@ -2618,6 +2631,7 @@ uniform vec2 uT; uniform float uDermis, uEpi;
 uniform vec4 uPatchD[8]; uniform int uNPatch;
 uniform float uBloodOn;
 uniform int uDbg;
+uniform int uHasObj;
 uniform float uDetK;
 
 vec3 shEval(vec3 n){
@@ -2749,11 +2763,11 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   if(cm>o.cMix){ o.cCol=cc; } o.cMix=max(o.cMix,cm);
 }
 
-float objH(vec2 uv){ vec4 o=texture(uObj,uv); return o.y>0.5 ? o.x : -1e3; }
+float objH(vec2 uv){ vec4 o=texS(uObj, uv); return o.y>0.5 ? o.x : -1e3; }
 
 void main(){
   vec2 p = worldOf(vUv);
-  vec4 d0 = texture(uDef0, vUv), d1 = texture(uDef1, vUv);
+  vec4 d0 = texS(uDef0, vUv), d1 = texS(uDef1, vUv);
   vec2 X = p - d0.xy;
   float pxmm = uPxMm;
   // ---- lesions (looked up through a coarse grid)
@@ -2810,8 +2824,8 @@ void main(){
   float wrH = A*sin(ph);
   // macro deformation gradient (half-res field)
   vec2 px = vec2(1.0)/uRes*2.0;
-  float wxp=texture(uDef0,vUv+vec2(px.x,0)).z, wyp=texture(uDef0,vUv+vec2(0,px.y)).z;
-  float wxm=texture(uDef0,vUv-vec2(px.x,0)).z, wym=texture(uDef0,vUv-vec2(0,px.y)).z;
+  float wxp=texS(uDef0, vUv+vec2(px.x,0)).z, wyp=texS(uDef0, vUv+vec2(0,px.y)).z;
+  float wxm=texS(uDef0, vUv-vec2(px.x,0)).z, wym=texS(uDef0, vUv-vec2(0,px.y)).z;
   vec2 gDef = vec2(wxp-wxm, wyp-wym)/(2.0*px*uView);
   float H = d0.z + lo.h + wrH + (nr.z-0.5)*uHmm*amp - wd;
   vec2 grad = gDef + gL + gMicro + gWr;
@@ -2825,8 +2839,8 @@ void main(){
   float heat = texture(uHeat, patchUv(p)).r;
   float m = uTone.x + uToneA.x*cn.x + uTone.x*0.10*(fbm(X*0.045)-0.5);
   float perf = ph0.r;
-  float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.35*max(0.0,perf-1.0);
-  hem += lo.hem + 0.45*ph0.b + 0.12*clamp((heat-33.0)/7.0,0.0,1.0) + 0.25*lip + 0.4*pun;
+  float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.22*max(0.0,perf-1.0);
+  hem += lo.hem + 0.22*ph0.b + 0.12*clamp((heat-33.0)/7.0,0.0,1.0) + 0.25*lip + 0.4*pun;
   float deox = lo.deox + ph0.a*0.6;
   float sh = uTone.z + uToneA.z*cn.z*0.6;
   vec3 OD = m*uVM + hem*uVH + sh*uVS + deox*vec3(0.62,0.68,0.42);
@@ -2878,7 +2892,7 @@ void main(){
   // cast shadows from instruments / fluids onto the skin (screen-space height march toward the key light)
   float sh2=0.0; vec3 Lk=normalize(uKey);
   vec2 stepUv = (Lk.xy/max(Lk.z,0.25))/uView;
-  for(int k=1;k<=14;k++){
+  for(int k=1;k<=14 && uHasObj==1;k++){
     float t = pow(float(k)/14.0, 1.6)*28.0;
     vec2 q = vUv + stepUv*t; float oh = objH(q);
     float rayH = H + t*1.0;
@@ -2886,7 +2900,7 @@ void main(){
   }
   sh2 *= 0.62;   // the key is a large softbox: penumbrae are wide and never fully dark
   float ao = lo.ao;
-  for(int k=0;k<6;k++){ float an=float(k)*1.047; vec2 q=vUv+vec2(cos(an),sin(an))*1.6/uView; float oh=objH(q); ao -= clamp((oh-H)*0.0+ (oh>H? 0.12*exp(-max(oh-H,0.0)*0.5):0.0),0.0,0.12); }
+  for(int k=0;k<6 && uHasObj==1;k++){ float an=float(k)*1.047; vec2 q=vUv+vec2(cos(an),sin(an))*1.6/uView; float oh=objH(q); ao -= clamp((oh-H)*0.0+ (oh>H? 0.12*exp(-max(oh-H,0.0)*0.5):0.0),0.0,0.12); }
   ao *= 1.0 - 0.35*clamp((0.5-nr.z)*2.0,0.0,1.0)*(1.0-stretch);   // cavity occlusion in furrows/pores
   ao *= 1.0 - 0.4*clamp(nr.w,0.0,1.0)*(1.0-stretch);                 // pores (scan pore mask)
   vec3 irr = (fill*mix(1.0,0.7,sh2) + keyD*(1.0-sh2)) * ao;
@@ -2905,9 +2919,9 @@ void main(){
   if(patchM>0.0){ float whiten=clamp(patchAge,0.0,1.0); alb=mix(alb, mix(vec3(0.82,0.66,0.52), vec3(0.93,0.9,0.86), whiten), patchM*(0.45+0.5*whiten)); spec += patchM*0.03*envSpec(R,0.12); }
 
   // ---- objects (fluids, extracted material, instruments) over the skin
-  vec4 ob = texture(uObj, vUv); vec4 oc = texture(uObjCol, vUv);
+  vec4 ob = texS(uObj, vUv); vec4 oc = texS(uObjCol, vUv);
   oIrr = vec4(irr, 1.0); oAlb = vec4(alb, skinH); oSpec = vec4(spec, 0.0);
-  if(uDbg>0){ vec3 dc = uDbg==1 ? vec3(nr.z) : uDbg==2 ? N*0.5+0.5 : uDbg==3 ? alb : uDbg==4 ? irr*0.5 : uDbg==5 ? vec3(ch.rgb) : spec*4.0; oIrr=vec4(0.0); oAlb=vec4(0.0,0.0,0.0,0.0); oSpec=vec4(dc,1.0); return; }
+  if(uDbg>0 && uDbg<7){ vec3 dc = uDbg==1 ? vec3(nr.z) : uDbg==2 ? N*0.5+0.5 : uDbg==3 ? alb : uDbg==4 ? irr*0.5 : uDbg==5 ? vec3(ch.rgb) : spec*4.0; oIrr=vec4(0.0); oAlb=vec4(0.0,0.0,0.0,0.0); oSpec=vec4(dc,1.0); return; }
   float matI = ob.y;
   if(matI > 0.5 && ob.x > skinH - 0.01){
     int mat = int(matI+0.5);
@@ -2972,14 +2986,15 @@ void main(){
 
 /* ---------- separable SSS (sum-of-Gaussians skin profile, GPU Gems 3 ch.14) ---------- */
 PP.SH.sssFS = `
-in vec2 vUv; out vec4 o; uniform sampler2D uIrr; uniform vec2 uDir; uniform float uPxMm;
+in vec2 vUv; out vec4 o; uniform sampler2D uIrr; uniform vec2 uDir; uniform float uPxMm; uniform vec2 uVSc; uniform vec2 uRes;
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 uniform float uOff[25]; uniform vec3 uW[25];
 void main(){
-  vec4 c=texture(uIrr,vUv); if(c.a<0.5){ o=c; return; }
+  vec4 c=texS(uIrr,vUv); if(c.a<0.5){ o=c; return; }
   vec3 s=vec3(0.0), ws=vec3(0.0);
   for(int i=0;i<25;i++){
     vec2 uv=vUv+uDir*uOff[i]*uPxMm;
-    vec4 q=texture(uIrr,uv);
+    vec4 q=texS(uIrr,uv);
     float m=q.a; vec3 w=uW[i]*m;
     s+=q.rgb*w; ws+=w;
   }
@@ -2988,19 +3003,21 @@ void main(){
 
 /* ---------- composite + post: DoF, lens droplets, ACES, vignette, grain ---------- */
 PP.SH.compFS = `
-in vec2 vUv; out vec4 o; uniform sampler2D uSss, uAlb, uSpec, uIrr0;
+in vec2 vUv; out vec4 o; uniform sampler2D uSss, uAlb, uSpec, uIrr0; uniform vec2 uVSc; uniform vec2 uRes; uniform int uDbgC;
+vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0) - 0.5/uRes) * uVSc); }
 void main(){
-  vec4 a=texture(uAlb,vUv), s=texture(uSpec,vUv), i=texture(uSss,vUv), i0=texture(uIrr0,vUv);
+  vec4 a=texS(uAlb,vUv), s=texS(uSpec,vUv), i=texS(uSss,vUv), i0=texS(uIrr0,vUv);
   // 65% diffused light + 35% direct: millimetre-scale shape stays legible, skin still reads soft
   vec3 irr = i0.a>0.5 ? mix(i0.rgb, i.rgb, 0.65) : i.rgb;
   vec3 c = s.a>0.5 ? s.rgb : a.rgb*irr + s.rgb;
+  if(uDbgC==7) c=i.rgb*0.6; else if(uDbgC==8) c=i0.rgb*0.6; else if(uDbgC==9) c=vec3(i.a,i0.a,s.a);
   o=vec4(c, a.a);
 }`;
 PP.SH.postFS = PP.SH.common + `
 in vec2 vUv; out vec4 o; uniform sampler2D uC; uniform float uPxMm2, uTime, uDof;
 uniform vec4 uDrop[24]; uniform vec4 uDrop2[24]; uniform int uND; uniform float uAspect;
 vec3 aces(vec3 x){ const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14; return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0); }
-vec3 tap(vec2 uv){ return texture(uC,uv).rgb; }
+vec3 tap(vec2 uv){ return texS(uC, uv).rgb; }
 void main(){
   vec2 uv=vUv;
   // lens droplets refract (inverted, magnified view), tint and blur what is behind them
@@ -3011,17 +3028,17 @@ void main(){
       tint = d2.x<0.5 ? vec3(0.95,0.32,0.28)*(0.55+0.45*hz) : d2.x<1.5 ? vec3(0.97,0.93,0.78)*(0.8+0.2*hz) : vec3(1.0);
       tint = mix(vec3(1.0), tint, d.w);
     } }
-  vec4 c0=texture(uC,uv);
+  vec4 c0=texS(uC, uv);
   float coc = clamp(abs(c0.a-0.0)*uDof, 0.0, 14.0);
   vec3 c=c0.rgb;
   if(coc>0.8){ vec3 s=vec3(0.0); float w=0.0;
-    for(int k=0;k<16;k++){ float an=float(k)*2.39996; float rr=sqrt((float(k)+0.5)/16.0)*coc; vec2 off=vec2(cos(an),sin(an))*rr/uRes; vec4 q=texture(uC,uv+off);
+    for(int k=0;k<16;k++){ float an=float(k)*2.39996; float rr=sqrt((float(k)+0.5)/16.0)*coc; vec2 off=vec2(cos(an),sin(an))*rr/uRes; vec4 q=texS(uC, uv+off);
       float qc=clamp(abs(q.a)*uDof,0.0,14.0); float ww = qc>=rr*0.7 ? 1.0 : 0.2; s+=q.rgb*ww; w+=ww; }
     c = s/w; }
   if(dropM>0.0){ vec3 b=vec3(0.0); for(int k=0;k<8;k++){ float an=float(k)*0.785; b+=tap(duv+vec2(cos(an),sin(an))*0.004); } b/=8.0; c=mix(c, b*tint, dropM); c += dropM*0.04; }
   // chromatic aberration toward the frame edge
   vec2 cd=(uv-0.5); float ca=dot(cd,cd)*0.004;
-  c.r = mix(c.r, texture(uC, uv+cd*ca).r, 0.6); c.b = mix(c.b, texture(uC, uv-cd*ca).b, 0.6);
+  c.r = mix(c.r, texS(uC, uv+cd*ca).r, 0.6); c.b = mix(c.b, texS(uC, uv-cd*ca).b, 0.6);
   c = aces(c*1.0);
   c = pow(c, vec3(1.0/2.2));
   float vig = 1.0 - 0.32*pow(length(cd*vec2(1.0,0.85))*1.25, 2.4);
@@ -3064,6 +3081,7 @@ PP.Renderer = function (canvas, W) {
   this.heatBytes = new Uint8Array(64 * 64);
   this.heatTex = G.tex(64, 64, { ifmt: gl.R8, fmt: gl.RED, type: gl.UNSIGNED_BYTE });
   this.dummy = G.tex(4, 4, { data: new Uint8Array(64) });
+  this.dyn = 1; this.vsx = 1; this.vsy = 1; this.dbg = +(PP.params.get('dbg') || 0);
   this.physA = null; this.physB = null; this.film = null;
   this.brushes = [];
   this.drops = [];   // lens droplets
@@ -3092,23 +3110,26 @@ PP.Renderer.prototype.initSSS = function () {
   this.sssOff = off; this.sssW = w;
 };
 
-PP.Renderer.prototype.resize = function () {
+// canvas stays at full size; internal render targets use a resolution step (1, 0.75, 0.55)
+PP.Renderer.prototype.resize = function (ds) {
   const G = this.G, gl = this.gl;
   const cw = Math.max(16, Math.floor(this.canvas.clientWidth * this.scale)), ch = Math.max(16, Math.floor(this.canvas.clientHeight * this.scale));
-  if (this.w === cw && this.h === ch) return;
-  this.w = cw; this.h = ch;
-  this.canvas.width = cw; this.canvas.height = ch;
+  if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
+  this.cw = cw; this.ch = ch;
+  const w = Math.max(16, Math.round(cw * (ds || 1))), h = Math.max(16, Math.round(ch * (ds || 1)));
+  if (this.w === w && this.h === h) return;
+  this.w = w; this.h = h;
   for (const k in this.rt) G.freeTarget(this.rt[k]);
   const F16 = { ifmt: gl.RGBA16F, fmt: gl.RGBA, type: gl.HALF_FLOAT };
   const F16N = { ifmt: gl.RGBA16F, fmt: gl.RGBA, type: gl.HALF_FLOAT, filter: gl.NEAREST };
-  const hw = Math.max(8, cw >> 1), hh = Math.max(8, ch >> 1);
+  const hw = Math.max(8, w >> 1), hh = Math.max(8, h >> 1);
   this.rt.def = G.target(hw, hh, [F16, F16]);
-  this.rt.obj = G.target(cw, ch, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
-  this.rt.objS = G.target(cw, ch, [F16]);
-  this.rt.skin = G.target(cw, ch, [F16, F16, F16]);
-  this.rt.sssA = G.target(cw, ch, [F16]);
-  this.rt.sssB = G.target(cw, ch, [F16]);
-  this.rt.comp = G.target(cw, ch, [F16]);
+  this.rt.obj = G.target(w, h, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
+  this.rt.objS = G.target(w, h, [F16]);
+  this.rt.skin = G.target(w, h, [F16, F16, F16]);
+  this.rt.sssA = G.target(hw, hh, [F16]);
+  this.rt.sssB = G.target(hw, hh, [F16]);
+  this.rt.comp = G.target(w, h, [F16]);
 };
 
 PP.Renderer.prototype.setupWorld = function () {
@@ -3263,31 +3284,44 @@ PP.Renderer.prototype.uploadLesions = function () {
 PP.Renderer.prototype.contactUniforms = function (prog) {
   const gl = this.gl, C = this.W.phys.contacts;
   const n = Math.min(48, C.length);
-  const a = new Float32Array(48 * 4), b = new Float32Array(48 * 4);
-  for (let i = 0; i < n; i++) { const c = C[i]; a.set([c.x, c.y, c.a, c.fn || 0], i * 4); b.set([c.qx || 0, c.qy || 0, c.suction || 0, 0], i * 4); }
+  const a = this._c0 || (this._c0 = new Float32Array(48 * 4)), b = this._c1 || (this._c1 = new Float32Array(48 * 4));
+  for (let i = 0; i < n; i++) {
+    const c = C[i], o = i * 4;
+    a[o] = c.x; a[o + 1] = c.y; a[o + 2] = c.a; a[o + 3] = c.fn || 0;
+    b[o] = c.qx || 0; b[o + 1] = c.qy || 0; b[o + 2] = c.suction || 0; b[o + 3] = 0;
+  }
   gl.uniform4fv(prog.u.uC0, a); gl.uniform4fv(prog.u.uC1, b); gl.uniform1i(prog.u.uNC, n);
 };
 PP.Renderer.prototype.woundUniforms = function (prog) {
-  const gl = this.gl, Wd = this.W.wounds;
-  const cuts = Wd.cuts.slice(-16), c0 = new Float32Array(64), c1 = new Float32Array(64);
-  cuts.forEach((c, i) => { c0.set([c.ax, c.ay, c.bx, c.by], i * 4); c1.set([c.depth, c.gape, c.clot, this.W.clock - c.t], i * 4); });
-  if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, c0); gl.uniform4fv(prog.u.uCut1, c1); gl.uniform1i(prog.u.uNCut, cuts.length); }
-  const holes = Wd.holes.slice(-8), h0 = new Float32Array(32), h1 = new Float32Array(32);
-  holes.forEach((h, i) => { h0.set([h.x, h.y, h.along, h.across], i * 4); h1.set([h.depth, h.core ? 1 : 0, h.clot, 0], i * 4); });
-  if (prog.u.uHole0) { gl.uniform4fv(prog.u.uHole0, h0); if (prog.u.uHole1) gl.uniform4fv(prog.u.uHole1, h1); gl.uniform1i(prog.u.uNH, holes.length); }
-  const inj = Wd.inj.slice(-8), j0 = new Float32Array(32), j1 = new Float32Array(32);
-  inj.forEach((j, i) => {
-    const e = Wd.epi(j.x, j.y);
-    const R = 5 + 4 * j.vol;
-    const age = this.W.clock - j.t;
-    const wheal = j.kind === 'lido' ? Math.min(0.6, j.vol * 0.5) * Math.exp(-age / 900) : 0.05 * Math.exp(-age / 300);
-    j0.set([j.x, j.y, j.kind === 'lido' ? R * 0.55 : 1.5, j.kind === 'lido' ? e : 0], i * 4); j1.set([wheal, 0, 0, 0], i * 4);
-  });
-  if (prog.u.uInj) { gl.uniform4fv(prog.u.uInj, j0); gl.uniform4fv(prog.u.uInj2, j1); gl.uniform1i(prog.u.uNI, inj.length); }
+  const gl = this.gl, Wd = this.W.wounds, clock = this.W.clock;
+  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
+  const nc = Math.min(16, Wd.cuts.length), oc = Wd.cuts.length - nc;
+  for (let i = 0; i < nc; i++) {
+    const c = Wd.cuts[oc + i], o = i * 4;
+    B.c0[o] = c.ax; B.c0[o + 1] = c.ay; B.c0[o + 2] = c.bx; B.c0[o + 3] = c.by;
+    B.c1[o] = c.depth; B.c1[o + 1] = c.gape; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+  }
+  if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
+  const nh = Math.min(8, Wd.holes.length), oh = Wd.holes.length - nh;
+  for (let i = 0; i < nh; i++) {
+    const h = Wd.holes[oh + i], o = i * 4;
+    B.h0[o] = h.x; B.h0[o + 1] = h.y; B.h0[o + 2] = h.along; B.h0[o + 3] = h.across;
+    B.h1[o] = h.depth; B.h1[o + 1] = h.core ? 1 : 0; B.h1[o + 2] = h.clot; B.h1[o + 3] = 0;
+  }
+  if (prog.u.uHole0) { gl.uniform4fv(prog.u.uHole0, B.h0); if (prog.u.uHole1) gl.uniform4fv(prog.u.uHole1, B.h1); gl.uniform1i(prog.u.uNH, nh); }
+  const ni = Math.min(8, Wd.inj.length), oi = Wd.inj.length - ni;
+  for (let i = 0; i < ni; i++) {
+    const j = Wd.inj[oi + i], o = i * 4;
+    const lido = j.kind === 'lido';
+    const R = 5 + 4 * j.vol, age = clock - j.t;
+    B.j0[o] = j.x; B.j0[o + 1] = j.y; B.j0[o + 2] = lido ? R * 0.55 : 1.5; B.j0[o + 3] = lido ? Wd.epi(j.x, j.y) : 0;
+    B.j1[o] = lido ? Math.min(0.6, j.vol * 0.5) * Math.exp(-age / 900) : 0.05 * Math.exp(-age / 300);
+  }
+  if (prog.u.uInj) { gl.uniform4fv(prog.u.uInj, B.j0); gl.uniform4fv(prog.u.uInj2, B.j1); gl.uniform1i(prog.u.uNI, ni); }
   if (prog.u.uPun) {
-    const pu = Wd.punct.slice(-32), p0 = new Float32Array(128);
-    pu.forEach((p, i) => p0.set([p.x, p.y, p.r * (1 - 0.5 * p.clot), 0], i * 4));
-    gl.uniform4fv(prog.u.uPun, p0); gl.uniform1i(prog.u.uNP, pu.length);
+    const np = Math.min(32, Wd.punct.length), op = Wd.punct.length - np;
+    for (let i = 0; i < np; i++) { const p = Wd.punct[op + i], o = i * 4; B.p0[o] = p.x; B.p0[o + 1] = p.y; B.p0[o + 2] = p.r * (1 - 0.5 * p.clot); }
+    gl.uniform4fv(prog.u.uPun, B.p0); gl.uniform1i(prog.u.uNP, np);
   }
 };
 PP.Renderer.prototype.camUniforms = function (prog, w, h) {
@@ -3296,19 +3330,51 @@ PP.Renderer.prototype.camUniforms = function (prog, w, h) {
   gl.uniform2f(prog.u.uView, C.vw, C.vh);
   if (prog.u.uRes) gl.uniform2f(prog.u.uRes, w, h);
   if (prog.u.uPatch) gl.uniform1f(prog.u.uPatch, this.W.area.size);
+  if (prog.u.uVSc) gl.uniform2f(prog.u.uVSc, this.vsx, this.vsy);
 };
 
 // brush ops into the film decal texture: kind -> channel colour
 PP.Renderer.prototype.brush = function (x, y, r, rgba, mode) { if (this.brushes.length < 40000) this.brushes.push({ x, y, r, c: rgba, mode: mode || 'add' }); };
 
-PP.Renderer.prototype.render = function (dt) {
+// GPU timing (when the browser exposes it) for the dynamic-resolution controller
+PP.Renderer.prototype.timerBegin = function () {
+  const gl = this.gl;
+  if (this.tq === undefined) { this.tq = gl.getExtension('EXT_disjoint_timer_query_webgl2'); this.tqPool = []; }
+  if (!this.tq || this.tqActive) return;
+  const q = gl.createQuery(); gl.beginQuery(this.tq.TIME_ELAPSED_EXT, q); this.tqActive = q;
+};
+PP.Renderer.prototype.timerEnd = function () {
+  const gl = this.gl;
+  if (!this.tqActive) return;
+  gl.endQuery(this.tq.TIME_ELAPSED_EXT); this.tqPool.push(this.tqActive); this.tqActive = null;
+  while (this.tqPool.length) {
+    const q = this.tqPool[0];
+    if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+    const disjoint = gl.getParameter(this.tq.GPU_DISJOINT_EXT);
+    if (!disjoint) this.gpuMs = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
+    gl.deleteQuery(q); this.tqPool.shift();
+  }
+  if (this.tqPool.length > 6) { gl.deleteQuery(this.tqPool.shift()); }
+};
+
+/* Full frame. Render targets are allocated once at the maximum size; dynamic resolution renders
+   into a scaled sub-viewport (no reallocation hitches) and every screen-space read is scaled by uVS. */
+PP.Renderer.prototype.render = function (dt, fullRes) {
   const G = this.G, gl = this.gl, W = this.W, P = this.P;
-  this.resize();
+  // pick a resolution step; change it at most every 1.5 s so targets are rarely reallocated
+  const want = fullRes ? 1 : (this.dyn || 1) >= 0.9 ? 1 : (this.dyn || 1) >= 0.68 ? 0.75 : 0.55;
+  const now = performance.now();
+  if (this.step === undefined) this.step = want;
+  if (want !== this.step && (now - (this.stepT || 0) > 1500 || fullRes)) { this.step = want; this.stepT = now; }
+  this.resize(this.step);
   const w = this.w, h = this.h;
+  this.aw = w; this.ah = h; this.vsx = 1; this.vsy = 1; this.lastDs = this.step;
+  const dw = this.rt.def.w, dh = this.rt.def.h, sw = this.rt.sssA.w, sh = this.rt.sssA.h;
   W.cam.update(w, h);
   this.uploadLesions();
   const A = W.area;
   const ph = W.phys;
+  this.timerBegin();
 
   // 1. physiology field (ping-pong)
   gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
@@ -3330,7 +3396,9 @@ PP.Renderer.prototype.render = function (dt) {
       gl.blendEquation(mode === 'add' ? gl.FUNC_ADD : gl.FUNC_REVERSE_SUBTRACT); gl.blendFunc(gl.ONE, gl.ONE);
       for (const b of this.brushes) {
         if (b.mode !== mode) continue;
-        d.set([b.x, b.y, b.r, 0, b.c[0], b.c[1], b.c[2], b.c[3], 0, 0, 0, 0, 0, 0, 0, 0], n * 16); n++;
+        const o = n * 16;
+        d[o] = b.x; d[o + 1] = b.y; d[o + 2] = b.r; d[o + 3] = 0; d[o + 4] = b.c[0]; d[o + 5] = b.c[1]; d[o + 6] = b.c[2]; d[o + 7] = b.c[3];
+        n++;
         if (n === 8000) { G.drawInstances(d, n); n = 0; }
       }
       if (n) G.drawInstances(d, n);
@@ -3340,8 +3408,8 @@ PP.Renderer.prototype.render = function (dt) {
   }
 
   // 3. deformation (half res)
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.def.fb); gl.viewport(0, 0, this.rt.def.w, this.rt.def.h);
-  gl.useProgram(P.def.p); this.camUniforms(P.def, this.rt.def.w, this.rt.def.h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.def.fb); gl.viewport(0, 0, dw, dh);
+  gl.useProgram(P.def.p); this.camUniforms(P.def, dw, dh);
   this.contactUniforms(P.def); this.woundUniforms(P.def);
   gl.uniform1f(P.def.u.uNu, ph.nu); gl.uniform1f(P.def.u.uEn, ph.En); gl.uniform1f(P.def.u.uG, ph.G); gl.uniform1f(P.def.u.uLd, ph.Ld); gl.uniform1f(P.def.u.uHeff, ph.Heff);
   gl.uniform2f(P.def.u.uT, ph.tx, ph.ty);
@@ -3350,11 +3418,14 @@ PP.Renderer.prototype.render = function (dt) {
   // 4. objects (particles + instruments)
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.obj.fb); gl.viewport(0, 0, w, h);
   gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
-  gl.useProgram(P.obj.p); this.camUniforms(P.obj, w, h);
   const n = this.buildInstances();
-  G.drawInstances(this.instData, n);
-  gl.disable(gl.DEPTH_TEST);
+  if (n) {
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+    gl.useProgram(P.obj.p); this.camUniforms(P.obj, w, h);
+    G.drawInstances(this.instData, n);
+    gl.disable(gl.DEPTH_TEST);
+  }
+  this.lastInst = n;
 
   // 5. fluid smoothing
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.objS.fb); gl.viewport(0, 0, w, h);
@@ -3373,7 +3444,7 @@ PP.Renderer.prototype.render = function (dt) {
   G.bindTex(10, this.envAtlas, S.u.uEnvP); G.bindTex(11, this.heatTex, S.u.uHeat); G.bindTex(12, this.lesTex, S.u.uLes);
   G.bindTex(14, set.detail, S.u.uDetail);
   gl.activeTexture(gl.TEXTURE13); gl.bindTexture(gl.TEXTURE_2D, this.gridTex.t); gl.uniform1i(S.u.uLGrid, 13);
-  gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4);
+  gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4); gl.uniform1i(S.u.uHasObj, n ? 1 : 0);
   gl.uniform1f(S.u.uTile, set.meta.tile_mm); gl.uniform1f(S.u.uHmm, set.meta.height_mm * W.reliefK);
   gl.uniform1f(S.u.uDetTile, det.meta.tile_mm * W.detScale); gl.uniform1f(S.u.uDetAmt, W.detAmt);
   gl.uniform1f(S.u.uPxMm, w / W.cam.vw); gl.uniform1f(S.u.uTime, W.time);
@@ -3384,44 +3455,71 @@ PP.Renderer.prototype.render = function (dt) {
   gl.uniform3fv(S.u.uKey, W.keyDir);
   gl.uniform2f(S.u.uT, ph.tx, ph.ty); gl.uniform1f(S.u.uDermis, A.dermis); gl.uniform1f(S.u.uEpi, A.epi);
   gl.uniform1f(S.u.uBloodOn, W.S.blood ? 1 : 0);
-  gl.uniform1i(S.u.uDbg, +(PP.params.get('dbg') || 0));
+  gl.uniform1i(S.u.uDbg, this.dbg);
   // the face scan comes from deep-toned skin; its pore pigment contrast is toned down for lighter skin
   gl.uniform1f(S.u.uDetK, W.curSet === (this.sets && this.sets.deep) ? 0.55 + 0.09 * W.toneIdx : 0.85);
   this.woundUniforms(S);
-  const pd = new Float32Array(32); const pts = W.decals.patches.slice(-8);
-  pts.forEach((q, i) => pd.set([q.x, q.y, q.r, PP.clamp((W.clock - q.t) / 86400, 0, 1)], i * 4));
-  gl.uniform4fv(S.u.uPatchD, pd); gl.uniform1i(S.u.uNPatch, pts.length);
+  const pd = this._pd || (this._pd = new Float32Array(32)); const np = Math.min(8, W.decals.patches.length), opp = W.decals.patches.length - np;
+  for (let i = 0; i < np; i++) { const q = W.decals.patches[opp + i], o = i * 4; pd[o] = q.x; pd[o + 1] = q.y; pd[o + 2] = q.r; pd[o + 3] = PP.clamp((W.clock - q.t) / 86400, 0, 1); }
+  gl.uniform4fv(S.u.uPatchD, pd); gl.uniform1i(S.u.uNPatch, np);
   G.drawFS();
 
-  // 7. subsurface scattering (separable, two passes)
+  // 7. subsurface scattering (separable, half resolution: scattered light is smooth)
   const pxmm = w / W.cam.vw;
   gl.useProgram(P.sss.p);
   gl.uniform1fv(P.sss.u.uOff, this.sssOff); gl.uniform3fv(P.sss.u.uW, this.sssW);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssA.fb);
-  G.bindTex(0, this.rt.skin.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 1 / w, 0); gl.uniform1f(P.sss.u.uPxMm, pxmm);
+  gl.uniform2f(P.sss.u.uVSc, this.vsx, this.vsy); gl.uniform1f(P.sss.u.uPxMm, pxmm);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssA.fb); gl.viewport(0, 0, sw, sh);
+  G.bindTex(0, this.rt.skin.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 1 / w, 0); gl.uniform2f(P.sss.u.uRes, w, h);
   G.drawFS();
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.sssB.fb);
-  G.bindTex(0, this.rt.sssA.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 0, 1 / h);
+  G.bindTex(0, this.rt.sssA.texs[0], P.sss.u.uIrr); gl.uniform2f(P.sss.u.uDir, 0, 1 / h); gl.uniform2f(P.sss.u.uRes, sw, sh);
   G.drawFS();
 
   // 8. composite
-  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.comp.fb);
-  gl.useProgram(P.comp.p);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.comp.fb); gl.viewport(0, 0, w, h);
+  gl.useProgram(P.comp.p); gl.uniform2f(P.comp.u.uVSc, this.vsx, this.vsy); gl.uniform2f(P.comp.u.uRes, w, h); gl.uniform1i(P.comp.u.uDbgC, this.dbg);
   G.bindTex(0, this.rt.sssB.texs[0], P.comp.u.uSss); G.bindTex(1, this.rt.skin.texs[1], P.comp.u.uAlb); G.bindTex(2, this.rt.skin.texs[2], P.comp.u.uSpec);
   G.bindTex(3, this.rt.skin.texs[0], P.comp.u.uIrr0);
   G.drawFS();
 
   // 9. post to screen
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h);
-  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, w, h);
+  this.present(true);
+  this.timerEnd();
+};
+
+// post pass only (cheap): re-present the last composite (film grain keeps moving)
+PP.Renderer.prototype.present = function (inFrame) {
+  const G = this.G, gl = this.gl, W = this.W, P = this.P;
+  if (!this.aw) return;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.cw, this.ch);
+  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, this.aw, this.ah);
   G.bindTex(0, this.rt.comp.texs[0], PO.u.uC);
-  gl.uniform1f(PO.u.uTime, W.time); gl.uniform1f(PO.u.uDof, pxmm * 0.022);
-  gl.uniform1f(PO.u.uAspect, w / h);
-  const d0 = new Float32Array(96), d1 = new Float32Array(96);
-  const drops = this.drops.slice(-24);
-  drops.forEach((d, i) => { d0.set([d.u, d.v, d.r, d.a], i * 4); d1.set([d.m, 0, 0, 0], i * 4); });
-  gl.uniform4fv(PO.u.uDrop, d0); gl.uniform4fv(PO.u.uDrop2, d1); gl.uniform1i(PO.u.uND, drops.length);
+  gl.uniform1f(PO.u.uTime, W.time); gl.uniform1f(PO.u.uDof, (this.aw / W.cam.vw) * 0.022);
+  gl.uniform1f(PO.u.uAspect, this.cw / this.ch);
+  const d0 = this._d0 || (this._d0 = new Float32Array(96)), d1 = this._d1 || (this._d1 = new Float32Array(96));
+  const nd = Math.min(24, this.drops.length), od = this.drops.length - nd;
+  for (let i = 0; i < nd; i++) { const d = this.drops[od + i], o = i * 4; d0[o] = d.u; d0[o + 1] = d.v; d0[o + 2] = d.r; d0[o + 3] = d.a; d1[o] = d.m; }
+  gl.uniform4fv(PO.u.uDrop, d0); gl.uniform4fv(PO.u.uDrop2, d1); gl.uniform1i(PO.u.uND, nd);
   G.drawFS();
+};
+
+// draw every program once with representative data so drivers finish lazy compilation during loading
+PP.Renderer.prototype.warm = function () {
+  const W = this.W, T = W.tools, P = W.parts;
+  W.phys.contacts.push({ x: 0, y: 0, a: 4, fn: 1, qx: 1, qy: 0 }, { x: 3, y: 0, a: 2, suction: 40 });
+  T.nPrim = 0;
+  T.primRaw([0, 0, 1, 1, 0, 0, 1, 1, 0, PP.MATOBJ.chrome, 0, 0, 0.8, 0.8, 0.8, 0]);
+  T.primRaw([0, 0, 1, 1, 5, 5, 6, 1.5, 1, PP.MATOBJ.nitrile, 0, 0, 0.3, 0.2, 0.6, 0]);
+  T.primRaw([0, 0, 1, 0, 3, 3, 0.5, 0.2, 2, PP.MATOBJ.gauze, 0, 0, 0.9, 0.9, 0.9, 0.3]);
+  T.primRaw([0, 0, 0.5, 0.08, 4, 0, 2, 0, 3, PP.MATOBJ.chrome, 3, 1, 2.2, 0, 0, 0]);
+  const a = P.spawn(1, 1, 0.3, 0.3, PP.MAT.blood), b = P.spawn(1.5, 1, 0.3, 0.3, PP.MAT.pus), c = P.spawn(1.8, 1, 0.3, 0.3, PP.MAT.pus);
+  if (b >= 0 && c >= 0) P.link(b, c, 0.3, 0.1, 2);
+  this.brush(0, 0, 1, [0, 0, 0.001, 0], 'add');
+  this.drops.push({ u: 0.5, v: 0.5, r: 0.001, a: 0.01, m: 0, vy: 0 });
+  this.render(1 / 60, true);
+  W.phys.contacts.length = 0; T.nPrim = 0; P.clear(); this.drops.length = 0;
+  this.render(1 / 60, true);
 };
 
 // particles + tool primitives -> instance buffer
@@ -3429,25 +3527,29 @@ PP.Renderer.prototype.buildInstances = function () {
   const W = this.W, P = W.parts, d = this.instData;
   let n = 0;
   const maxN = 9000;
+  const put = (ax, ay, az, ar, bx, by, bz, br, ty, m, cr, cg, cb) => {
+    const o = n * 16;
+    d[o] = ax; d[o + 1] = ay; d[o + 2] = az; d[o + 3] = ar; d[o + 4] = bx; d[o + 5] = by; d[o + 6] = bz; d[o + 7] = br;
+    d[o + 8] = ty; d[o + 9] = m; d[o + 10] = 0; d[o + 11] = 0; d[o + 12] = cr; d[o + 13] = cg; d[o + 14] = cb; d[o + 15] = 0;
+    n++;
+  };
   for (let i = 0; i < P.hi && n < maxN - 200; i++) {
     if (!P.alive[i]) continue;
-    const j = P.next[i];
-    const m = P.mat[i];
-    if (j >= 0 && P.alive[j]) {
-      d.set([P.x[i], P.y[i], P.z[i], P.r[i], P.x[j], P.y[j], P.z[j], P.r[j], 1, m, 0, 0, P.cr[i], P.cg[i], P.cb[i], 0], n * 16); n++;
-    } else if (P.prev[i] < 0) {
+    const j = P.next[i], m = P.mat[i];
+    if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i], P.r[i], P.x[j], P.y[j], P.z[j], P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
+    else if (P.prev[i] < 0) {
       // free particle: liquids flatten into a sessile bead on the skin
-      let r = P.r[i], z = P.z[i];
-      if (P.onSkin[i] && P.isLiquid(m)) { z = z - r * 0.55; }
-      d.set([P.x[i], P.y[i], z, r, P.x[i], P.y[i], z, r, 0, m, 0, 0, P.cr[i], P.cg[i], P.cb[i], 0], n * 16); n++;
+      const r = P.r[i], z = P.onSkin[i] && P.isLiquid(m) ? P.z[i] - r * 0.55 : P.z[i];
+      put(P.x[i], P.y[i], z, r, P.x[i], P.y[i], z, r, 0, m, P.cr[i], P.cg[i], P.cb[i]);
     }
   }
   const T = W.tools;
   if (T.nPrim) { d.set(T.prims.subarray(0, T.nPrim * 16), n * 16); n += T.nPrim; }
   // draped splatter shield (loose gauze) over the active lesion while squeezing
   if (W.S.shield && W.phys.contacts.length && W.activeLesion) {
-    const L = W.activeLesion;
-    d.set([L.x, L.y, 9, 0, Math.max(L.R * 2.2, 6), Math.max(L.R * 2.2, 6), 0.4, 0.3, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.6], n * 16); n++;
+    const L = W.activeLesion, g = W.decals.gauzeCol, e = Math.max(L.R * 2.2, 6);
+    put(L.x, L.y, 9, 0, e, e, 0.4, 0.3, 2, PP.MATOBJ.gauze, g[0], g[1], g[2]);
+    d[(n - 1) * 16 + 15] = 0.6;
   }
   return n;
 };
@@ -3648,6 +3750,8 @@ PP.World.prototype.newPatch = function (seed) {
   // centre the camera on something interesting
   const focus = this.lesions.find((L) => L.type !== 'filament') || null;
   if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
+  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  this.activeUntil = this.time + 1;
   this.fx.patchChanged();
 };
 
@@ -3891,7 +3995,7 @@ PP.UI.prototype.build = function () {
   // zoom controls
   $('zin').addEventListener('click', () => this.zoomBy(1.35));
   $('zout').addEventListener('click', () => this.zoomBy(1 / 1.35));
-  $('zfit').addEventListener('click', () => { W.cam.zoom = this.zmin(); this.zoomBy(1); });
+  $('zfit').addEventListener('click', () => { W.cam.tz = this.zmin(); this.zoomBy(1); });
   // add your own blemishes (any area)
   const add = $('addsel');
   const groups = {};
@@ -3945,7 +4049,7 @@ PP.UI.prototype.renderChart = function (rebuild) {
       const row = e.target.closest('.les'); if (!row) return;
       const L = row.dataset.fil ? fil[0] : W.lesions[+row.dataset.id];
       if (!L) return;
-      W.cam.x = L.x; W.cam.y = L.y; W.cam.zoom = Math.max(W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4));
+      W.cam.tx = L.x; W.cam.ty = L.y; W.cam.tz = Math.max(W.cam.tz || W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4)); this.clampTarget();
       this.sel = L;
     };
   }
@@ -4027,6 +4131,11 @@ PP.UI.prototype.update = function (dt) {
   if (L && L.P > 0.5) ro += (ro ? ' · ' : '') + 'cavity ' + L.P.toFixed(0) + ' kPa';
   if (L) { const t = W.wounds.heatAt(L.x, L.y); L.maxT = Math.max(L.maxT || 0, t); if (t > 33.2) ro += (ro ? ' · ' : '') + t.toFixed(1) + ' °C'; }
   this.$('readout').textContent = ro || '—';
+  if (W.S.perf) {
+    const R = W.render, pf = PP.main.fps ? PP.main.fps.toFixed(0) + ' fps' : '';
+    this.$('perf').hidden = false;
+    this.$('perf').textContent = pf + (R.gpuMs != null ? ' · GPU ' + R.gpuMs.toFixed(1) + ' ms' : '') + ' · ' + Math.round((R.lastDs || 1) * 100) + '% res';
+  } else this.$('perf').hidden = true;
   const zt = W.cam.zoom.toFixed(1) + '×';
   if (this._zt !== zt) { this._zt = zt; this.$('zoomv').textContent = zt; }
   // ring at cursor
@@ -4058,7 +4167,11 @@ PP.UI.prototype.bindInput = function () {
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     const p = this.toWorld(e.clientX, e.clientY);
-    if (e.button === 2 || e.button === 1) { this.pan = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y }; return; }
+    W.activeUntil = W.time + 1.5;
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && (T.id === 'move' || this.space))) {
+      this.pan = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, lt: performance.now(), lx: W.cam.x, ly: W.cam.y };
+      W.cam.vxp = W.cam.vyp = 0; this.canvas.classList.add('grabbing'); return;
+    }
     if (this.erasing) { this.eraseDrag = true; this.eraseAt(p.x, p.y); return; }
     if (this.placeType) {
       const T = PP.LTYPES[this.placeType];
@@ -4083,10 +4196,15 @@ PP.UI.prototype.bindInput = function () {
     if (pt) { pt.x = e.clientX; pt.y = e.clientY; }
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     if (this.pan) {
-      const r = cv.getBoundingClientRect();
-      W.cam.x = this.pan.cx - ((e.clientX - this.pan.sx) / r.width) * W.cam.vw;
-      W.cam.y = this.pan.cy + ((e.clientY - this.pan.sy) / r.height) * W.cam.vh;
-      this.clampCam(); return;
+      const r = cv.getBoundingClientRect(), C = W.cam, P = this.pan;
+      C.x = P.cx - ((e.clientX - P.sx) / r.width) * C.vw;
+      C.y = P.cy + ((e.clientY - P.sy) / r.height) * C.vh;
+      this.clampCam(); C.tx = C.x; C.ty = C.y;
+      const now = performance.now(), dts = Math.max(1, now - P.lt) / 1000;
+      C.vxp = PP.lerp(C.vxp || 0, (C.x - P.lx) / dts, 0.5); C.vyp = PP.lerp(C.vyp || 0, (C.y - P.ly) / dts, 0.5);
+      P.lt = now; P.lx = C.x; P.ly = C.y;
+      W.activeUntil = W.time + 1.5;
+      return;
     }
     if (T.touch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
@@ -4096,13 +4214,13 @@ PP.UI.prototype.bindInput = function () {
     if (this.pinch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
-      W.cam.zoom = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
+      W.cam.zoom = W.cam.tz = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
       const r = cv.getBoundingClientRect();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       W.cam.vw = W.area.view / W.cam.zoom;
       W.cam.x = this.pinch.cx - ((mx - this.pinch.mx) / r.width) * W.cam.vw;
       W.cam.y = this.pinch.cy + ((my - this.pinch.my) / r.height) * W.cam.vh;
-      this.clampCam(); return;
+      this.clampCam(); W.cam.tx = W.cam.x; W.cam.ty = W.cam.y; return;
     }
     const p = this.toWorld(e.clientX, e.clientY);
     if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
@@ -4112,7 +4230,10 @@ PP.UI.prototype.bindInput = function () {
   const end = (e) => {
     this.ptrs.delete(e.pointerId);
     if (this.eraseDrag) { this.eraseDrag = false; return; }
-    if (this.pan && this.ptrs.size === 0) { this.pan = null; return; }
+    if (this.pan && this.ptrs.size === 0) {
+      if (performance.now() - this.pan.lt > 90) { W.cam.vxp = W.cam.vyp = 0; }   // released after stopping: no fling
+      this.pan = null; this.canvas.classList.remove('grabbing'); return;
+    }
     if (T.touch) { if (this.ptrs.size < 2) { T.touch = null; } return; }
     if (this.pinch) { if (this.ptrs.size < 2) this.pinch = null; return; }
     T.up();
@@ -4128,14 +4249,23 @@ PP.UI.prototype.bindInput = function () {
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
       return;
     }
-    const before = this.toWorld(e.clientX, e.clientY);
-    W.cam.zoom = PP.clamp(W.cam.zoom * Math.exp(-e.deltaY * 0.0015), this.zmin(), PP.UI.ZMAX);
-    W.cam.vw = W.area.view / W.cam.zoom; W.cam.vh = (W.cam.vw * W.cam.ch) / W.cam.cw;
-    const after = this.toWorld(e.clientX, e.clientY);
-    W.cam.x += before.x - after.x; W.cam.y += before.y - after.y;
-    this.clampCam();
+    // zoom about the cursor: the point under it stays put while the camera eases to the new zoom
+    const C = W.cam, r = cv.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width - 0.5, fy = 0.5 - (e.clientY - r.top) / r.height;
+    const tvw0 = W.area.view / C.tz, tvh0 = (tvw0 * C.ch) / C.cw;
+    const px = C.tx + fx * tvw0, py = C.ty + fy * tvh0;
+    C.tz = PP.clamp(C.tz * Math.exp(-e.deltaY * 0.0018), this.zmin(), PP.UI.ZMAX);
+    const tvw = W.area.view / C.tz, tvh = (tvw * C.ch) / C.cw;
+    C.tx = px - fx * tvw; C.ty = py - fy * tvh;
+    this.clampTarget(); W.activeUntil = W.time + 1.5;
   }, { passive: false });
+  const warmAudio = () => W.audio.start();
+  window.addEventListener('pointerdown', warmAudio, { once: true, capture: true });
+  window.addEventListener('keydown', warmAudio, { once: true, capture: true });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') { this.space = false; cv.classList.remove('grab'); } });
   window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') && e.code === 'Space') return;
+    if (e.code === 'Space') { e.preventDefault(); this.space = true; cv.classList.add('grab'); return; }
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     const k = e.key.toUpperCase();
     const t = PP.TOOLS.find((x) => x.key === k);
@@ -4182,9 +4312,30 @@ PP.UI.prototype.clampCam = function () {
 };
 PP.UI.prototype.zoomBy = function (k) {
   const W = this.W, C = W.cam;
-  C.zoom = PP.clamp(C.zoom * k, this.zmin(), PP.UI.ZMAX);
+  C.tz = PP.clamp((C.tz || C.zoom) * k, this.zmin(), PP.UI.ZMAX);
+  this.clampTarget(); W.activeUntil = W.time + 1.5;
+};
+PP.UI.prototype.clampTarget = function () {
+  const W = this.W, C = W.cam, s = W.area.size / 2;
+  const vw = W.area.view / C.tz, vh = (vw * C.ch) / C.cw;
+  C.tx = vw / 2 >= s ? 0 : PP.clamp(C.tx, -s + vw / 2, s - vw / 2);
+  C.ty = vh / 2 >= s ? 0 : PP.clamp(C.ty, -s + vh / 2, s - vh / 2);
+};
+// critically damped glide toward the target view, plus pan inertia
+PP.UI.prototype.easeCamera = function (dt) {
+  const W = this.W, C = W.cam;
+  if (C.tz == null) { C.tz = C.zoom; C.tx = C.x; C.ty = C.y; C.vxp = C.vyp = 0; }
+  if (!this.pan && (Math.abs(C.vxp) + Math.abs(C.vyp) > 0.05)) {
+    C.tx += C.vxp * dt; C.ty += C.vyp * dt;
+    const d = Math.exp(-dt / 0.22); C.vxp *= d; C.vyp *= d;
+    this.clampTarget(); W.activeUntil = W.time + 0.5;
+  }
+  if (this.pan) return;
+  const k = 1 - Math.exp(-dt / 0.07);
+  const ez = C.tz - C.zoom, ex = C.tx - C.x, ey = C.ty - C.y;
+  if (Math.abs(ez) < 1e-4 && Math.abs(ex) < 1e-3 && Math.abs(ey) < 1e-3) { C.zoom = C.tz; C.x = C.tx; C.y = C.ty; }
+  else { C.zoom += ez * k; C.x += ex * k; C.y += ey * k; W.activeUntil = W.time + 0.3; }
   C.vw = W.area.view / C.zoom; C.vh = (C.vw * C.ch) / C.cw;
-  this.clampCam();
 };
 PP.UI.prototype.setPlace = function (type) {
   if (type && this.erasing) this.setErase(false);
@@ -4204,7 +4355,7 @@ PP.UI.prototype.openSettings = function () {
     <h2 id="sett">Settings</h2>
     <h3>Gross level</h3>
     <div class="row"><button data-preset="mild" class="${S.preset === 'mild' ? 'on' : ''}">Mild</button><button data-preset="real" class="${S.preset === 'real' ? 'on' : ''}">Realistic</button><button data-preset="max" class="${S.preset === 'max' ? 'on' : ''}">Maximum gross</button></div>
-    ${tog('s_blood', 'Blood', S.blood)}${tog('s_lens', 'Lens splatter', S.lens)}${tog('s_surg', 'Surgical lesions (cysts, lipomas, boils)', S.surgical)}${tog('s_pain', 'Pain and flinching', S.pain)}${tog('s_ring', 'Clinic ring light', S.ring)}
+    ${tog('s_blood', 'Blood', S.blood)}${tog('s_lens', 'Lens splatter', S.lens)}${tog('s_surg', 'Surgical lesions (cysts, lipomas, boils)', S.surgical)}${tog('s_pain', 'Pain and flinching', S.pain)}${tog('s_ring', 'Clinic ring light', S.ring)}${tog('s_perf', 'Show performance (fps, GPU time, resolution)', S.perf)}
     ${sld('s_spurt', 'Spurt intensity', S.spurt, 0, 2.5, 0.1)}${sld('s_ooze', 'Ooze amount', S.ooze, 0.5, 3, 0.1)}${sld('s_bamt', 'Bleeding', S.bloodAmt, 0, 2, 0.1)}
     <label class="set"><span>Render quality</span><select id="s_q"><option value="sharp">Sharp (slower on high-DPI screens)</option><option value="high">Standard</option><option value="low">Low (fastest)</option></select></label>
     <h3>About the simulation</h3>
@@ -4217,7 +4368,7 @@ PP.UI.prototype.openSettings = function () {
   const q = this.$('s_q'); q.value = PP.storage.get('quality', 'high');
   const save = () => { PP.storage.set('settings', Object.assign({}, S, { shield: false })); };
   const bind = (id, key) => this.$(id).addEventListener('change', (e) => { S[key] = e.target.checked; S.preset = 'custom'; save(); });
-  bind('s_blood', 'blood'); bind('s_lens', 'lens'); bind('s_surg', 'surgical'); bind('s_pain', 'pain'); bind('s_ring', 'ring');
+  bind('s_blood', 'blood'); bind('s_lens', 'lens'); bind('s_surg', 'surgical'); bind('s_pain', 'pain'); bind('s_ring', 'ring'); bind('s_perf', 'perf');
   const bindS = (id, key) => this.$(id).addEventListener('input', (e) => { S[key] = +e.target.value; this.$(id + 'v').textContent = (+e.target.value).toFixed(1) + '×'; S.preset = 'custom'; save(); });
   bindS('s_spurt', 'spurt'); bindS('s_ooze', 'ooze'); bindS('s_bamt', 'bloodAmt');
   q.addEventListener('change', () => { PP.storage.set('quality', q.value); W.render.scale = PP.Renderer.scaleFor(q.value); });
@@ -4545,7 +4696,7 @@ PP.main = {
   R.resize();
   PP.main.UI = new PP.UI(W);
   W.newPatch(W.seed);
-  R.render(1 / 60); mark('firstFrame');
+  R.warm(); mark('firstFrame');
   loading.hidden = true;
   if (PP.TEST) PP.diag.write('TIMING ' + JSON.stringify(tm));
 
@@ -4569,29 +4720,47 @@ PP.main = {
     PP.diag.write('RENDER ok ' + R.w + 'x' + R.h + ' particles=' + W.parts.count + ' lesions=' + W.lesions.length);
   }
 
-  let fpsAcc = 0, fpsN = 0, lowered = false;
+  // Render on demand + dynamic resolution. While anything moves, render every frame and adapt the
+  // internal resolution to hold ~60 fps (GPU timer when available). When everything is still, render a
+  // full-resolution frame a few times a second (slow changes like redness fading) and re-present it otherwise.
+  let goodN = 0, idleT = 9, lastFull = 0, pc = { x: NaN, y: NaN, z: NaN, w: 0, h: 0 };
   function frame(now) {
     const fdt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    PP.main.fps = PP.lerp(PP.main.fps || 60, 1 / Math.max(fdt, 1e-3), 0.05);
     if (!frozen) {
       acc += fdt;
       let n = 0;
       while (acc >= dt && n < 3) { W.step(dt); acc -= dt; n++; }
       if (n === 3) acc = 0;   // never snowball: a slow frame just runs the sim slower
+      PP.main.UI.easeCamera(fdt);
     }
+    const C = W.cam;
+    const camMoved = C.x !== pc.x || C.y !== pc.y || C.zoom !== pc.z || R.canvas.clientWidth !== pc.w || R.canvas.clientHeight !== pc.h;
+    pc.x = C.x; pc.y = C.y; pc.z = C.zoom; pc.w = R.canvas.clientWidth; pc.h = R.canvas.clientHeight;
+    const active = frozen || camMoved || W.phys.contacts.length > 0 || W.parts.moving || R.drops.length > 0 || R.brushes.length > 0 ||
+      W.cam.shake > 0 || W.time < (W.activeUntil || 0) || W.tools.ptr.down;
     // camera shake on flinch
     const sh = W.cam.shake > 0 ? W.cam.shake * 0.6 : 0;
-    const cx = W.cam.x, cy = W.cam.y;
-    if (sh) { W.cam.x += (Math.random() - 0.5) * sh; W.cam.y += (Math.random() - 0.5) * sh; }
-    R.render(fdt);
-    if (sh) { W.cam.x = cx; W.cam.y = cy; }
+    const cx = C.x, cy = C.y;
+    if (sh) { C.x += (Math.random() - 0.5) * sh; C.y += (Math.random() - 0.5) * sh; }
+    if (active) {
+      R.render(fdt);
+      idleT = 0;
+      if (PP.TEST) { R.dyn = +(PP.params.get('dyn') || 1); }
+      else {
+      const ms = R.gpuMs != null ? R.gpuMs : fdt * 1000;
+      if (ms > 17.5) { R.dyn = Math.max(0.5, (R.dyn || 1) * 0.9); goodN = 0; }
+      else if (ms < (R.gpuMs != null ? 11 : 17.4) && ++goodN > 25) { R.dyn = Math.min(1, (R.dyn || 1) + 0.05); goodN = 0; }
+      }
+    } else {
+      idleT += fdt;
+      if (idleT > 0.2 && now - lastFull > 250) { R.render(fdt); lastFull = now; }
+      else R.present();
+    }
+    if (sh) { C.x = cx; C.y = cy; }
     PP.main.UI.update(fdt);
     W.audio.vacuum(W.tools.id === 'vacuum' && W.tools.ptr.down, W.tools.vacLevel / 2);
-    // auto-lower quality on slow GPUs
-    if (!PP.TEST && !lowered) {
-      fpsAcc += fdt; fpsN++;
-      if (fpsN === 90) { if (fpsAcc / fpsN > 0.034 && PP.storage.get('quality', 'high') === 'high') { R.scale = Math.max(0.55, R.scale * 0.7); lowered = true; PP.main.UI.toast('', 'Lowered render resolution', 'This GPU was below ~30 fps. Change it in Settings.'); } fpsAcc = 0; fpsN = 0; }
-    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

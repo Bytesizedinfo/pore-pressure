@@ -60,7 +60,7 @@ PP.UI.prototype.build = function () {
   // zoom controls
   $('zin').addEventListener('click', () => this.zoomBy(1.35));
   $('zout').addEventListener('click', () => this.zoomBy(1 / 1.35));
-  $('zfit').addEventListener('click', () => { W.cam.zoom = this.zmin(); this.zoomBy(1); });
+  $('zfit').addEventListener('click', () => { W.cam.tz = this.zmin(); this.zoomBy(1); });
   // add your own blemishes (any area)
   const add = $('addsel');
   const groups = {};
@@ -114,7 +114,7 @@ PP.UI.prototype.renderChart = function (rebuild) {
       const row = e.target.closest('.les'); if (!row) return;
       const L = row.dataset.fil ? fil[0] : W.lesions[+row.dataset.id];
       if (!L) return;
-      W.cam.x = L.x; W.cam.y = L.y; W.cam.zoom = Math.max(W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4));
+      W.cam.tx = L.x; W.cam.ty = L.y; W.cam.tz = Math.max(W.cam.tz || W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4)); this.clampTarget();
       this.sel = L;
     };
   }
@@ -196,6 +196,11 @@ PP.UI.prototype.update = function (dt) {
   if (L && L.P > 0.5) ro += (ro ? ' · ' : '') + 'cavity ' + L.P.toFixed(0) + ' kPa';
   if (L) { const t = W.wounds.heatAt(L.x, L.y); L.maxT = Math.max(L.maxT || 0, t); if (t > 33.2) ro += (ro ? ' · ' : '') + t.toFixed(1) + ' °C'; }
   this.$('readout').textContent = ro || '—';
+  if (W.S.perf) {
+    const R = W.render, pf = PP.main.fps ? PP.main.fps.toFixed(0) + ' fps' : '';
+    this.$('perf').hidden = false;
+    this.$('perf').textContent = pf + (R.gpuMs != null ? ' · GPU ' + R.gpuMs.toFixed(1) + ' ms' : '') + ' · ' + Math.round((R.lastDs || 1) * 100) + '% res';
+  } else this.$('perf').hidden = true;
   const zt = W.cam.zoom.toFixed(1) + '×';
   if (this._zt !== zt) { this._zt = zt; this.$('zoomv').textContent = zt; }
   // ring at cursor
@@ -227,7 +232,11 @@ PP.UI.prototype.bindInput = function () {
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     const p = this.toWorld(e.clientX, e.clientY);
-    if (e.button === 2 || e.button === 1) { this.pan = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y }; return; }
+    W.activeUntil = W.time + 1.5;
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && (T.id === 'move' || this.space))) {
+      this.pan = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, lt: performance.now(), lx: W.cam.x, ly: W.cam.y };
+      W.cam.vxp = W.cam.vyp = 0; this.canvas.classList.add('grabbing'); return;
+    }
     if (this.erasing) { this.eraseDrag = true; this.eraseAt(p.x, p.y); return; }
     if (this.placeType) {
       const T = PP.LTYPES[this.placeType];
@@ -252,10 +261,15 @@ PP.UI.prototype.bindInput = function () {
     if (pt) { pt.x = e.clientX; pt.y = e.clientY; }
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     if (this.pan) {
-      const r = cv.getBoundingClientRect();
-      W.cam.x = this.pan.cx - ((e.clientX - this.pan.sx) / r.width) * W.cam.vw;
-      W.cam.y = this.pan.cy + ((e.clientY - this.pan.sy) / r.height) * W.cam.vh;
-      this.clampCam(); return;
+      const r = cv.getBoundingClientRect(), C = W.cam, P = this.pan;
+      C.x = P.cx - ((e.clientX - P.sx) / r.width) * C.vw;
+      C.y = P.cy + ((e.clientY - P.sy) / r.height) * C.vh;
+      this.clampCam(); C.tx = C.x; C.ty = C.y;
+      const now = performance.now(), dts = Math.max(1, now - P.lt) / 1000;
+      C.vxp = PP.lerp(C.vxp || 0, (C.x - P.lx) / dts, 0.5); C.vyp = PP.lerp(C.vyp || 0, (C.y - P.ly) / dts, 0.5);
+      P.lt = now; P.lx = C.x; P.ly = C.y;
+      W.activeUntil = W.time + 1.5;
+      return;
     }
     if (T.touch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
@@ -265,13 +279,13 @@ PP.UI.prototype.bindInput = function () {
     if (this.pinch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
-      W.cam.zoom = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
+      W.cam.zoom = W.cam.tz = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
       const r = cv.getBoundingClientRect();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       W.cam.vw = W.area.view / W.cam.zoom;
       W.cam.x = this.pinch.cx - ((mx - this.pinch.mx) / r.width) * W.cam.vw;
       W.cam.y = this.pinch.cy + ((my - this.pinch.my) / r.height) * W.cam.vh;
-      this.clampCam(); return;
+      this.clampCam(); W.cam.tx = W.cam.x; W.cam.ty = W.cam.y; return;
     }
     const p = this.toWorld(e.clientX, e.clientY);
     if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
@@ -281,7 +295,10 @@ PP.UI.prototype.bindInput = function () {
   const end = (e) => {
     this.ptrs.delete(e.pointerId);
     if (this.eraseDrag) { this.eraseDrag = false; return; }
-    if (this.pan && this.ptrs.size === 0) { this.pan = null; return; }
+    if (this.pan && this.ptrs.size === 0) {
+      if (performance.now() - this.pan.lt > 90) { W.cam.vxp = W.cam.vyp = 0; }   // released after stopping: no fling
+      this.pan = null; this.canvas.classList.remove('grabbing'); return;
+    }
     if (T.touch) { if (this.ptrs.size < 2) { T.touch = null; } return; }
     if (this.pinch) { if (this.ptrs.size < 2) this.pinch = null; return; }
     T.up();
@@ -297,14 +314,23 @@ PP.UI.prototype.bindInput = function () {
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
       return;
     }
-    const before = this.toWorld(e.clientX, e.clientY);
-    W.cam.zoom = PP.clamp(W.cam.zoom * Math.exp(-e.deltaY * 0.0015), this.zmin(), PP.UI.ZMAX);
-    W.cam.vw = W.area.view / W.cam.zoom; W.cam.vh = (W.cam.vw * W.cam.ch) / W.cam.cw;
-    const after = this.toWorld(e.clientX, e.clientY);
-    W.cam.x += before.x - after.x; W.cam.y += before.y - after.y;
-    this.clampCam();
+    // zoom about the cursor: the point under it stays put while the camera eases to the new zoom
+    const C = W.cam, r = cv.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width - 0.5, fy = 0.5 - (e.clientY - r.top) / r.height;
+    const tvw0 = W.area.view / C.tz, tvh0 = (tvw0 * C.ch) / C.cw;
+    const px = C.tx + fx * tvw0, py = C.ty + fy * tvh0;
+    C.tz = PP.clamp(C.tz * Math.exp(-e.deltaY * 0.0018), this.zmin(), PP.UI.ZMAX);
+    const tvw = W.area.view / C.tz, tvh = (tvw * C.ch) / C.cw;
+    C.tx = px - fx * tvw; C.ty = py - fy * tvh;
+    this.clampTarget(); W.activeUntil = W.time + 1.5;
   }, { passive: false });
+  const warmAudio = () => W.audio.start();
+  window.addEventListener('pointerdown', warmAudio, { once: true, capture: true });
+  window.addEventListener('keydown', warmAudio, { once: true, capture: true });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') { this.space = false; cv.classList.remove('grab'); } });
   window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') && e.code === 'Space') return;
+    if (e.code === 'Space') { e.preventDefault(); this.space = true; cv.classList.add('grab'); return; }
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     const k = e.key.toUpperCase();
     const t = PP.TOOLS.find((x) => x.key === k);
@@ -351,9 +377,30 @@ PP.UI.prototype.clampCam = function () {
 };
 PP.UI.prototype.zoomBy = function (k) {
   const W = this.W, C = W.cam;
-  C.zoom = PP.clamp(C.zoom * k, this.zmin(), PP.UI.ZMAX);
+  C.tz = PP.clamp((C.tz || C.zoom) * k, this.zmin(), PP.UI.ZMAX);
+  this.clampTarget(); W.activeUntil = W.time + 1.5;
+};
+PP.UI.prototype.clampTarget = function () {
+  const W = this.W, C = W.cam, s = W.area.size / 2;
+  const vw = W.area.view / C.tz, vh = (vw * C.ch) / C.cw;
+  C.tx = vw / 2 >= s ? 0 : PP.clamp(C.tx, -s + vw / 2, s - vw / 2);
+  C.ty = vh / 2 >= s ? 0 : PP.clamp(C.ty, -s + vh / 2, s - vh / 2);
+};
+// critically damped glide toward the target view, plus pan inertia
+PP.UI.prototype.easeCamera = function (dt) {
+  const W = this.W, C = W.cam;
+  if (C.tz == null) { C.tz = C.zoom; C.tx = C.x; C.ty = C.y; C.vxp = C.vyp = 0; }
+  if (!this.pan && (Math.abs(C.vxp) + Math.abs(C.vyp) > 0.05)) {
+    C.tx += C.vxp * dt; C.ty += C.vyp * dt;
+    const d = Math.exp(-dt / 0.22); C.vxp *= d; C.vyp *= d;
+    this.clampTarget(); W.activeUntil = W.time + 0.5;
+  }
+  if (this.pan) return;
+  const k = 1 - Math.exp(-dt / 0.07);
+  const ez = C.tz - C.zoom, ex = C.tx - C.x, ey = C.ty - C.y;
+  if (Math.abs(ez) < 1e-4 && Math.abs(ex) < 1e-3 && Math.abs(ey) < 1e-3) { C.zoom = C.tz; C.x = C.tx; C.y = C.ty; }
+  else { C.zoom += ez * k; C.x += ex * k; C.y += ey * k; W.activeUntil = W.time + 0.3; }
   C.vw = W.area.view / C.zoom; C.vh = (C.vw * C.ch) / C.cw;
-  this.clampCam();
 };
 PP.UI.prototype.setPlace = function (type) {
   if (type && this.erasing) this.setErase(false);
@@ -373,7 +420,7 @@ PP.UI.prototype.openSettings = function () {
     <h2 id="sett">Settings</h2>
     <h3>Gross level</h3>
     <div class="row"><button data-preset="mild" class="${S.preset === 'mild' ? 'on' : ''}">Mild</button><button data-preset="real" class="${S.preset === 'real' ? 'on' : ''}">Realistic</button><button data-preset="max" class="${S.preset === 'max' ? 'on' : ''}">Maximum gross</button></div>
-    ${tog('s_blood', 'Blood', S.blood)}${tog('s_lens', 'Lens splatter', S.lens)}${tog('s_surg', 'Surgical lesions (cysts, lipomas, boils)', S.surgical)}${tog('s_pain', 'Pain and flinching', S.pain)}${tog('s_ring', 'Clinic ring light', S.ring)}
+    ${tog('s_blood', 'Blood', S.blood)}${tog('s_lens', 'Lens splatter', S.lens)}${tog('s_surg', 'Surgical lesions (cysts, lipomas, boils)', S.surgical)}${tog('s_pain', 'Pain and flinching', S.pain)}${tog('s_ring', 'Clinic ring light', S.ring)}${tog('s_perf', 'Show performance (fps, GPU time, resolution)', S.perf)}
     ${sld('s_spurt', 'Spurt intensity', S.spurt, 0, 2.5, 0.1)}${sld('s_ooze', 'Ooze amount', S.ooze, 0.5, 3, 0.1)}${sld('s_bamt', 'Bleeding', S.bloodAmt, 0, 2, 0.1)}
     <label class="set"><span>Render quality</span><select id="s_q"><option value="sharp">Sharp (slower on high-DPI screens)</option><option value="high">Standard</option><option value="low">Low (fastest)</option></select></label>
     <h3>About the simulation</h3>
@@ -386,7 +433,7 @@ PP.UI.prototype.openSettings = function () {
   const q = this.$('s_q'); q.value = PP.storage.get('quality', 'high');
   const save = () => { PP.storage.set('settings', Object.assign({}, S, { shield: false })); };
   const bind = (id, key) => this.$(id).addEventListener('change', (e) => { S[key] = e.target.checked; S.preset = 'custom'; save(); });
-  bind('s_blood', 'blood'); bind('s_lens', 'lens'); bind('s_surg', 'surgical'); bind('s_pain', 'pain'); bind('s_ring', 'ring');
+  bind('s_blood', 'blood'); bind('s_lens', 'lens'); bind('s_surg', 'surgical'); bind('s_pain', 'pain'); bind('s_ring', 'ring'); bind('s_perf', 'perf');
   const bindS = (id, key) => this.$(id).addEventListener('input', (e) => { S[key] = +e.target.value; this.$(id + 'v').textContent = (+e.target.value).toFixed(1) + '×'; S.preset = 'custom'; save(); });
   bindS('s_spurt', 'spurt'); bindS('s_ooze', 'ooze'); bindS('s_bamt', 'bloodAmt');
   q.addEventListener('change', () => { PP.storage.set('quality', q.value); W.render.scale = PP.Renderer.scaleFor(q.value); });

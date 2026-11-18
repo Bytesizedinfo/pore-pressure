@@ -58,7 +58,7 @@ PP.main = {
   R.resize();
   PP.main.UI = new PP.UI(W);
   W.newPatch(W.seed);
-  R.render(1 / 60); mark('firstFrame');
+  R.warm(); mark('firstFrame');
   loading.hidden = true;
   if (PP.TEST) PP.diag.write('TIMING ' + JSON.stringify(tm));
 
@@ -82,29 +82,47 @@ PP.main = {
     PP.diag.write('RENDER ok ' + R.w + 'x' + R.h + ' particles=' + W.parts.count + ' lesions=' + W.lesions.length);
   }
 
-  let fpsAcc = 0, fpsN = 0, lowered = false;
+  // Render on demand + dynamic resolution. While anything moves, render every frame and adapt the
+  // internal resolution to hold ~60 fps (GPU timer when available). When everything is still, render a
+  // full-resolution frame a few times a second (slow changes like redness fading) and re-present it otherwise.
+  let goodN = 0, idleT = 9, lastFull = 0, pc = { x: NaN, y: NaN, z: NaN, w: 0, h: 0 };
   function frame(now) {
     const fdt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    PP.main.fps = PP.lerp(PP.main.fps || 60, 1 / Math.max(fdt, 1e-3), 0.05);
     if (!frozen) {
       acc += fdt;
       let n = 0;
       while (acc >= dt && n < 3) { W.step(dt); acc -= dt; n++; }
       if (n === 3) acc = 0;   // never snowball: a slow frame just runs the sim slower
+      PP.main.UI.easeCamera(fdt);
     }
+    const C = W.cam;
+    const camMoved = C.x !== pc.x || C.y !== pc.y || C.zoom !== pc.z || R.canvas.clientWidth !== pc.w || R.canvas.clientHeight !== pc.h;
+    pc.x = C.x; pc.y = C.y; pc.z = C.zoom; pc.w = R.canvas.clientWidth; pc.h = R.canvas.clientHeight;
+    const active = frozen || camMoved || W.phys.contacts.length > 0 || W.parts.moving || R.drops.length > 0 || R.brushes.length > 0 ||
+      W.cam.shake > 0 || W.time < (W.activeUntil || 0) || W.tools.ptr.down;
     // camera shake on flinch
     const sh = W.cam.shake > 0 ? W.cam.shake * 0.6 : 0;
-    const cx = W.cam.x, cy = W.cam.y;
-    if (sh) { W.cam.x += (Math.random() - 0.5) * sh; W.cam.y += (Math.random() - 0.5) * sh; }
-    R.render(fdt);
-    if (sh) { W.cam.x = cx; W.cam.y = cy; }
+    const cx = C.x, cy = C.y;
+    if (sh) { C.x += (Math.random() - 0.5) * sh; C.y += (Math.random() - 0.5) * sh; }
+    if (active) {
+      R.render(fdt);
+      idleT = 0;
+      if (PP.TEST) { R.dyn = +(PP.params.get('dyn') || 1); }
+      else {
+      const ms = R.gpuMs != null ? R.gpuMs : fdt * 1000;
+      if (ms > 17.5) { R.dyn = Math.max(0.5, (R.dyn || 1) * 0.9); goodN = 0; }
+      else if (ms < (R.gpuMs != null ? 11 : 17.4) && ++goodN > 25) { R.dyn = Math.min(1, (R.dyn || 1) + 0.05); goodN = 0; }
+      }
+    } else {
+      idleT += fdt;
+      if (idleT > 0.2 && now - lastFull > 250) { R.render(fdt); lastFull = now; }
+      else R.present();
+    }
+    if (sh) { C.x = cx; C.y = cy; }
     PP.main.UI.update(fdt);
     W.audio.vacuum(W.tools.id === 'vacuum' && W.tools.ptr.down, W.tools.vacLevel / 2);
-    // auto-lower quality on slow GPUs
-    if (!PP.TEST && !lowered) {
-      fpsAcc += fdt; fpsN++;
-      if (fpsN === 90) { if (fpsAcc / fpsN > 0.034 && PP.storage.get('quality', 'high') === 'high') { R.scale = Math.max(0.55, R.scale * 0.7); lowered = true; PP.main.UI.toast('', 'Lowered render resolution', 'This GPU was below ~30 fps. Change it in Settings.'); } fpsAcc = 0; fpsN = 0; }
-    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

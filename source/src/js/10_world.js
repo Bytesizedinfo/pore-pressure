@@ -84,6 +84,8 @@ PP.World.prototype.newPatch = function (seed) {
   // centre the camera on something interesting
   const focus = this.lesions.find((L) => L.type !== 'filament') || null;
   if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
+  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  this.activeUntil = this.time + 1;
   this.fx.patchChanged();
 };
 

@@ -179,12 +179,14 @@ PP.Particles = function (cap) {
     }
     // bookkeeping: lens hits, bounds, settling
     const half = W.area.size / 2 + 4;
+    let mv = 0;
     for (let i = 0; i < hi; i++) {
       if (!this.alive[i]) continue;
       if (this.z[i] > W.lensZ) { if (W.onLens) W.onLens(i); this.kill(i); continue; }
       if (Math.abs(this.x[i]) > half || Math.abs(this.y[i]) > half || this.z[i] < -20) { this.kill(i); continue; }
       const sp = Math.abs(this.x[i] - this.px[i]) + Math.abs(this.y[i] - this.py[i]) + Math.abs(this.z[i] - this.pz[i]);
       this.still[i] = sp < 0.002 ? this.still[i] + dt : 0;
+      if (sp > mv) mv = sp;
       if (this.onSkin[i] && this.isLiquid(this.mat[i]) && W.onTrail && sp > 0.01) W.onTrail(i);
       // settled small liquid droplets soak into the film decal (keeps the particle budget)
       if (this.isLiquid(this.mat[i]) && this.onSkin[i] && this.still[i] > 2.5 && this.r[i] < 0.45 && this.next[i] < 0) {
@@ -193,6 +195,7 @@ PP.Particles = function (cap) {
       }
     }
     while (this.hi > 0 && !this.alive[this.hi - 1]) this.hi--;
+    this.moving = mv > 0.0015;
   };
 
   this.nearest = function (x, y, maxD, filter) {
