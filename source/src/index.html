@@ -1,0 +1,185 @@
+<title>Pore Pressure</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: full-bleed macro camera view; instrument tray left, chart right, readouts in mono. Deliberately dark (clinic monitor). */
+:root {
+  --bg: #0b0d0e;
+  --panel: rgba(17, 20, 22, 0.86);
+  --panel-solid: #14181a;
+  --line: rgba(222, 214, 205, 0.12);
+  --fg: #ece6df;
+  --muted: #a49d95;
+  --accent: #8f82f2;      /* nitrile glove violet */
+  --accent-ink: #15122c;
+  --warn: #d79a3a;        /* povidone-iodine amber */
+  --danger: #d0574f;
+  --ok: #67c08e;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--font-ui); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#stage { position: fixed; inset: 0; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+#ui { position: fixed; inset: 0; pointer-events: none;
+  padding-top: max(10px, env(safe-area-inset-top, 0px)); padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto 1fr auto; gap: 10px; }
+#ui > * { pointer-events: auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+button, select, input { font: inherit; color: inherit; }
+button { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: rgba(222, 214, 205, 0.3); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+select { background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+
+/* top bar */
+#top { grid-column: 1 / 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
+#brand { font: 600 17px/1 var(--font-head); letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
+#brand small { display: block; font: 500 10px/1.2 var(--font-mono); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 3px; }
+.group { display: flex; align-items: center; gap: 6px; }
+.lbl { font: 500 10px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#tones { display: flex; gap: 4px; }
+#tones button { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+#tones button.on { border-color: var(--fg); background-clip: padding-box; }
+#clock { font: 500 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
+.spacer { flex: 1; }
+
+/* tool tray */
+#tray { grid-row: 2 / 3; display: flex; flex-direction: column; gap: 4px; padding: 8px; overflow-y: auto; max-height: 100%; width: 172px; }
+#tray h3 { font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 8px 4px 2px; }
+#tray h3:first-child { margin-top: 2px; }
+.tool { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; text-align: left; border-color: transparent; padding: 5px 6px; }
+.tool svg { width: 22px; height: 22px; }
+.tool .k { font: 400 10px/1 var(--font-mono); color: var(--muted); }
+.tool.on { background: rgba(143, 130, 242, 0.18); border-color: var(--accent); color: var(--fg); }
+#toolopt { font-size: 12px; color: var(--muted); padding: 6px 4px 2px; line-height: 1.35; }
+
+/* right chart */
+#side { grid-row: 2 / 3; grid-column: 3; width: 250px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+#chart { padding: 10px; overflow-y: auto; min-height: 0; flex: 1; }
+#chart h2, #stats h2 { font: 600 13px/1 var(--font-head); letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
+.les { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+.les:hover { background: rgba(255,255,255,0.04); }
+.les .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.les .st { font: 400 11px/1 var(--font-mono); color: var(--muted); }
+.les.done .dot { background: var(--ok); } .les.bad .dot { background: var(--danger); } .les.active .dot { background: var(--warn); }
+#stats { padding: 10px; }
+#stats dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; font-size: 12px; }
+#stats dd { margin: 0; font: 500 12px/1.3 var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+#stats dt { color: var(--muted); }
+
+/* bottom: info card + meters */
+#bottom { grid-column: 2 / 3; grid-row: 3; display: flex; justify-content: center; align-items: flex-end; gap: 10px; min-width: 0; }
+#info { max-width: 560px; padding: 12px 14px; min-width: 0; }
+#info h4 { margin: 0 0 2px; font: 600 16px/1.2 var(--font-head); }
+#info .sub { font: 400 11px/1.3 var(--font-mono); color: var(--muted); margin-bottom: 6px; }
+#info p { margin: 0 0 6px; color: #d9d2cb; font-size: 13px; }
+#info ol { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+#info li.done { color: var(--ok); text-decoration: line-through; text-decoration-color: rgba(103,192,142,0.5); }
+#info a { color: var(--accent); }
+#meters { padding: 10px 12px; display: grid; gap: 6px; width: 190px; }
+.meter { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
+#painbar i { background: linear-gradient(90deg, var(--warn), var(--danger)); }
+#readout { font: 500 11px/1.2 var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
+#zoom { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+#zoom button { padding: 2px 9px; min-width: 30px; }
+#zoomv { font: 500 12px/1 var(--font-mono); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+#addsize { width: 72px; accent-color: var(--accent); }
+#addsel { max-width: 170px; }
+#gl.placing { cursor: copy; }
+
+/* toasts */
+#toasts { position: fixed; top: calc(70px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: grid; gap: 6px; pointer-events: none; width: min(520px, calc(100vw - 32px)); z-index: 5; }
+.toast { padding: 8px 12px; border-radius: 8px; background: var(--panel-solid); border: 1px solid var(--line); font-size: 13px; animation: tin 160ms ease-out; }
+.toast b { font-family: var(--font-head); letter-spacing: 0.02em; }
+.toast.good { border-color: rgba(103,192,142,0.6); } .toast.bad { border-color: rgba(208,87,79,0.7); } .toast.warn { border-color: rgba(215,154,58,0.7); }
+@keyframes tin { from { opacity: 0; transform: translateY(-6px); } }
+
+/* cursor ring */
+#ring { position: fixed; width: 54px; height: 54px; margin: -27px 0 0 -27px; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 120ms; }
+#ring.show { opacity: 1; }
+
+/* modal */
+#modal { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5,6,7,0.6); z-index: 10; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+#modal .panel { width: min(640px, 100%); max-height: min(86vh, 900px); overflow-y: auto; padding: 18px 20px; background: var(--panel-solid); }
+#modal h2 { font: 600 20px/1.2 var(--font-head); margin: 0 0 6px; text-wrap: balance; }
+#modal h3 { font: 600 13px/1 var(--font-head); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 18px 0 8px; }
+#modal p, #modal li { color: #d9d2cb; font-size: 13.5px; max-width: 65ch; }
+#modal a { color: var(--accent); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.set { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.set input[type=range] { width: 160px; accent-color: var(--accent); }
+.set input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+#diag { position: fixed; left: 8px; bottom: 8px; max-width: 60vw; max-height: 40vh; overflow: auto; margin: 0; padding: 8px; font: 11px/1.3 var(--font-mono); background: rgba(40,0,0,0.85); color: #ffd7d2; border-radius: 6px; z-index: 20; white-space: pre-wrap; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; background: var(--bg); font: 500 12px/1.4 var(--font-mono); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+@media (max-width: 760px) {
+  #ui { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; }
+  #top { grid-column: 1; }
+  #side { grid-column: 1; grid-row: 2; width: auto; align-self: start; max-height: 34vh; }
+  #chart { display: none; }
+  #tray { grid-row: 4; flex-direction: row; width: auto; max-height: none; overflow-x: auto; overflow-y: hidden; }
+  #tray h3 { display: none; }
+  .tool { grid-template-columns: 22px; } .tool span, .tool .k { display: none; }
+  #toolopt { display: none; }
+  #bottom { grid-column: 1; grid-row: 3; flex-direction: column; align-items: stretch; }
+  #meters { width: auto; }
+  #info { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } .bar i { transition: none; } }
+</style>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+<div id="ui">
+  <header id="top" class="panel">
+    <div id="brand">Pore Pressure<small>Macro extraction simulator</small></div>
+    <div class="group"><span class="lbl">Area</span>
+      <select id="area" aria-label="Skin area"></select></div>
+    <div class="group"><span class="lbl">Skin</span><div id="tones" role="radiogroup" aria-label="Skin tone"></div></div>
+    <button id="newpatch" title="Generate a new patient patch">New patch</button>
+    <div class="group"><select id="addsel" aria-label="Add a blemish"></select>
+      <input type="range" id="addsize" min="0" max="1" step="0.05" value="0.5" aria-label="Size of the next blemish" title="Size of the next blemish">
+      <button id="clearles" title="Remove every blemish and wound">Clear</button></div>
+    <div class="spacer"></div>
+    <div class="group"><span class="lbl">Clinic clock</span><span id="clock">+0:00</span>
+      <select id="waitsel" aria-label="Time-lapse length"><option value="60">1 min</option><option value="600" selected>10 min</option><option value="7200">2 h</option><option value="172800">2 days</option></select>
+      <button id="wait" title="Time-lapse: let slow processes run (anesthetic onset, clotting, healing, steroid response)">Wait</button></div>
+    <button id="wipelens" title="Wipe the camera lens">Wipe lens</button>
+    <button id="mute" title="Sound on/off" aria-pressed="true">Sound</button>
+    <button id="settings" title="Gross settings, sources and credits">Settings</button>
+  </header>
+  <nav id="tray" class="panel" aria-label="Instruments"></nav>
+  <div></div>
+  <aside id="side">
+    <section id="chart" class="panel" aria-label="Lesion chart"><h2>Chart</h2><div id="leslist"></div></section>
+    <section id="stats" class="panel"><h2>Session</h2><dl id="statlist"></dl></section>
+  </aside>
+  <div id="bottom">
+    <section id="info" class="panel" aria-live="polite"></section>
+    <section id="meters" class="panel">
+      <div class="meter">Force<div class="bar" id="forcebar"><i></i></div></div>
+      <div class="meter">Pain<div class="bar" id="painbar"><i></i></div></div>
+      <div id="readout">—</div>
+      <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Zoom all the way out">Fit</button></div>
+    </section>
+  </div>
+</div>
+<div id="toasts" aria-live="polite"></div>
+<svg id="ring" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="22" fill="none" stroke="rgba(236,230,223,0.25)" stroke-width="3"/><circle id="ringv" cx="27" cy="27" r="22" fill="none" stroke="#8f82f2" stroke-width="3" stroke-dasharray="0 200" transform="rotate(-90 27 27)" stroke-linecap="round"/></svg>
+<div id="modal" hidden></div>
+<div id="loading">Loading skin scans…</div>
+<pre id="diag" hidden></pre>
+<script>
+/*__JS__*/
+</script>
