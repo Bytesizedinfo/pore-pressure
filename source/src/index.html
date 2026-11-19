@@ -33,6 +33,9 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 var(--
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto 1fr auto; gap: 10px; }
 #ui > * { pointer-events: auto; }
+/* layout containers must not swallow input meant for the skin: only their panels take the pointer */
+#ui > .hole, #ui > #bottom, #ui > #side { pointer-events: none; }
+#bottom > *, #side > * { pointer-events: auto; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 button, select, input { font: inherit; color: inherit; }
 button { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
@@ -94,12 +97,18 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #readout { font: 500 11px/1.2 var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
 #zoom { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 #zoom button { padding: 2px 9px; min-width: 30px; }
-#zoomv { font: 500 12px/1 var(--font-mono); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+#zoomv { font: 500 12px/1 var(--font-mono); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #addsize { width: 72px; accent-color: var(--accent); }
 #addsel { max-width: 170px; }
 #gl.placing { cursor: copy; }
 #gl.erasing { cursor: cell; }
 #gl.grab { cursor: grab; } #gl.grabbing { cursor: grabbing; }
+#gl.orbit { cursor: grab; } #gl.orbit.pointing { cursor: zoom-in; } #gl.orbit.grabbing { cursor: grabbing; }
+#bodylabel { position: fixed; z-index: 5; pointer-events: none; transform: translate(14px, 14px); padding: 6px 9px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line); font: 500 11px/1.3 var(--font-mono); color: var(--fg); white-space: nowrap; }
+#bodylabel b { font-weight: 600; color: var(--accent); }
+body.bodyview #tray { opacity: 0.4; transition: opacity 200ms; }
+body.bodyview #tray:hover { opacity: 1; }
 #perf { font: 500 11px/1.2 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* toasts */
@@ -164,7 +173,7 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
     <button id="settings" title="Gross settings, sources and credits">Settings</button>
   </header>
   <nav id="tray" class="panel" aria-label="Instruments"></nav>
-  <div></div>
+  <div class="hole"></div>
   <aside id="side">
     <section id="chart" class="panel" aria-label="Lesion chart"><h2>Chart</h2><div id="leslist"></div></section>
     <section id="stats" class="panel"><h2>Session</h2><dl id="statlist"></dl></section>
@@ -176,11 +185,12 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
       <div class="meter">Pain<div class="bar" id="painbar"><i></i></div></div>
       <div id="readout">—</div>
       <div id="perf" hidden></div>
-      <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Zoom all the way out">Fit</button></div>
+      <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Show the whole patch (in the face view: frame the face)">Fit</button><button id="zbody" title="Zoom out to the whole face and upper body">Face</button></div>
     </section>
   </div>
 </div>
 <div id="toasts" aria-live="polite"></div>
+<div id="bodylabel" hidden></div>
 <svg id="ring" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="22" fill="none" stroke="rgba(236,230,223,0.25)" stroke-width="3"/><circle id="ringv" cx="27" cy="27" r="22" fill="none" stroke="#8f82f2" stroke-width="3" stroke-dasharray="0 200" transform="rotate(-90 27 27)" stroke-linecap="round"/></svg>
 <div id="modal" hidden></div>
 <div id="loading">Loading skin scans…</div>

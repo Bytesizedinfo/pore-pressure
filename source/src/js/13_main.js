@@ -2,12 +2,16 @@
 /* Boot + main loop. */
 PP.main = {
   W: null, R: null, UI: null,
-  async switchArea(id, quiet) {
+  // switch the macro view to another area, keeping every area's state (blemishes, wounds, films)
+  async switchArea(id) {
     const W = this.W;
+    if (id === W.areaId && W.lesions) { if (this.UI) this.UI.$('area').value = id; return; }
+    W.switching = true;
+    W.tools.up(); W.tools.ptr.down = false;
+    W.ensureAreas(); W.stashArea();
     W.setArea(id); W.setTone(W.toneIdx);
-    await this.loadSets();
-    if (this.UI) { this.UI.$('area').value = id; this.UI.renderTray(); }
-    if (!quiet) { W.newPatch(Math.floor(Math.random() * 1e9)); if (this.UI) this.UI.sel = null; }
+    try { await this.loadSets(); } finally { W.restoreArea(); W.switching = false; }
+    if (this.UI) { this.UI.$('area').value = id; this.UI.renderTray(); this.UI.sel = null; }
   },
   async switchTone(i) {
     const W = this.W;
@@ -31,6 +35,7 @@ PP.main = {
     W = new PP.World();
     R = new PP.Renderer(document.getElementById('gl'), W);
     W.render = R;
+    PP.main.B = new PP.Body(R, W);
   } catch (e) {
     fail('This simulator needs WebGL2 with float render targets. ' + (e.message || e));
     return;
@@ -61,6 +66,13 @@ PP.main = {
   R.warm(); mark('firstFrame');
   loading.hidden = true;
   if (PP.TEST) PP.diag.write('TIMING ' + JSON.stringify(tm));
+  const B = PP.main.B;
+  // after the first frame: fetch the face model and the other areas' scans, and draw the face once offscreen
+  // so its shaders are fully compiled before the first zoom-out
+  setTimeout(() => {
+    for (const n of ['deep', 'nose', 'body']) R.loadSet(n).catch(() => {});
+    B.load().then(() => { W.ensureAreas(); B.matrices(); B.render(); }).catch(() => {});
+  }, PP.TEST ? 0 : 400);
 
   const dt = 1 / 120;
   let acc = 0, last = performance.now(), frozen = false;
@@ -95,8 +107,23 @@ PP.main = {
       let n = 0;
       while (acc >= dt && n < 3) { W.step(dt); acc -= dt; n++; }
       if (n === 3) acc = 0;   // never snowball: a slow frame just runs the sim slower
-      PP.main.UI.easeCamera(fdt);
+      if (B.mode === 'macro') PP.main.UI.easeCamera(fdt);
     }
+    const bMoved = B.update(fdt);
+    if (W.switching) { R.present(); requestAnimationFrame(frame); return; }
+    if (B.mode !== 'macro') {
+      // face / body view; during a crossfade both views render and the body is blended over the macro composite
+      if (B.fade < 1) { R.presentTex = null; R.onComposite = () => B.blendInto(); R.render(fdt); R.onComposite = null; }
+      else {
+        if (bMoved || B.dirty || frozen) B.render();
+        R.presentTex = B.rt ? B.rt.texs[0] : null; R.present();
+      }
+      PP.main.UI.update(fdt);
+      W.audio.vacuum(false, 0);
+      requestAnimationFrame(frame);
+      return;
+    }
+    R.presentTex = null;
     const C = W.cam;
     const camMoved = C.x !== pc.x || C.y !== pc.y || C.zoom !== pc.z || R.canvas.clientWidth !== pc.w || R.canvas.clientHeight !== pc.h;
     pc.x = C.x; pc.y = C.y; pc.z = C.zoom; pc.w = R.canvas.clientWidth; pc.h = R.canvas.clientHeight;

@@ -432,7 +432,8 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   G.bindTex(3, this.rt.skin.texs[0], P.comp.u.uIrr0);
   G.drawFS();
 
-  // 9. post to screen
+  // 9. post to screen (the face view blends itself over the composite during a crossfade)
+  if (this.onComposite) this.onComposite();
   this.present(true);
   this.timerEnd();
 };
@@ -442,12 +443,13 @@ PP.Renderer.prototype.present = function (inFrame) {
   const G = this.G, gl = this.gl, W = this.W, P = this.P;
   if (!this.aw) return;
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.cw, this.ch);
-  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, this.aw, this.ah);
-  G.bindTex(0, this.rt.comp.texs[0], PO.u.uC);
+  const src = this.presentTex || this.rt.comp.texs[0], pw = this.presentTex ? this.cw : this.aw, ph = this.presentTex ? this.ch : this.ah;
+  const PO = P.post; gl.useProgram(PO.p); this.camUniforms(PO, pw, ph);
+  G.bindTex(0, src, PO.u.uC);
   gl.uniform1f(PO.u.uTime, W.time); gl.uniform1f(PO.u.uDof, (this.aw / W.cam.vw) * 0.022);
   gl.uniform1f(PO.u.uAspect, this.cw / this.ch);
   const d0 = this._d0 || (this._d0 = new Float32Array(96)), d1 = this._d1 || (this._d1 = new Float32Array(96));
-  const nd = Math.min(24, this.drops.length), od = this.drops.length - nd;
+  const nd = this.hideDrops ? 0 : Math.min(24, this.drops.length), od = this.drops.length - nd;
   for (let i = 0; i < nd; i++) { const d = this.drops[od + i], o = i * 4; d0[o] = d.u; d0[o + 1] = d.v; d0[o + 2] = d.r; d0[o + 3] = d.a; d1[o] = d.m; }
   gl.uniform4fv(PO.u.uDrop, d0); gl.uniform4fv(PO.u.uDrop2, d1); gl.uniform1i(PO.u.uND, nd);
   G.drawFS();

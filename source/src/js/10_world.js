@@ -64,8 +64,17 @@ PP.World.prototype.newPatch = function (seed) {
   this.lesions = []; this.clock = 0; this.ctx.clock = 0;
   this.render.setupWorld();
   this.cam.x = 0; this.cam.y = 0; this.cam.zoom = 1;
-  const A = this.area, rng = this.rng;
-  const placed = [];
+  this.lesions = this.genLesions(this.area, this.rng);
+  // centre the camera on something interesting
+  const focus = this.lesions.find((L) => L.type !== 'filament') || null;
+  if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
+  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  this.activeUntil = this.time + 1;
+  this.fx.patchChanged();
+};
+// scatter an area's typical blemish mix over its patch (big ones first, no overlaps)
+PP.World.prototype.genLesions = function (A, rng) {
+  const out = [], placed = [];
   const tryPlace = (type, d) => {
     const T = PP.LTYPES[type];
     if (!this.S.surgical && ['epidermoid', 'pilar', 'lipoma', 'carbuncle', 'furuncle', 'steatocystoma'].includes(type)) return;
@@ -74,17 +83,59 @@ PP.World.prototype.newPatch = function (seed) {
       const x = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1), y = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
       const R = (d || (T.d[0] + T.d[1]) / 2) / 2;
       const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + (type === 'filament' ? 0.8 : 2.5));
-      if (ok) { const L = new PP.Lesion(this.lesions.length, type, x, y, rng, { d }); this.lesions.push(L); placed.push({ x, y, R: L.R }); return L; }
+      if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R }); return; }
     }
-    return null;
   };
-  // big ones first
   const mix = A.mix.slice().sort((a, b) => PP.LTYPES[b[0]].d[1] - PP.LTYPES[a[0]].d[1]);
   for (const [type, n] of mix) for (let k = 0; k < n; k++) tryPlace(type);
-  // centre the camera on something interesting
-  const focus = this.lesions.find((L) => L.type !== 'filament') || null;
-  if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
-  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  return out;
+};
+
+/* Per-area state: every area keeps its own blemishes, wounds, films and physiology field, so what you popped
+   stays popped when you zoom out to the face and back in (loose particles are cleared on a switch). */
+PP.World.prototype.ensureAreas = function () {
+  this.areaStates = this.areaStates || {};
+  for (const id of Object.keys(PP.AREAS)) {
+    if (id === this.areaId || this.areaStates[id]) continue;
+    let h = 2166136261; for (const c of id) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    const seed = (this.seed ^ h) >>> 0;
+    this.areaStates[id] = { seed, lesions: this.genLesions(PP.AREAS[id], PP.rng(seed)), gpu: null };
+  }
+};
+PP.World.prototype.stashArea = function () {
+  const R = this.render, Wd = this.wounds, D = this.decals;
+  this.areaStates = this.areaStates || {};
+  for (const L of this.lesions) {
+    // particle chains do not survive a switch
+    if (L.plug) { L.plug.chainTop = -1; L.plug.chainRoot = -1; L.plug.moving = false; }
+    if (L.sac) L.sac.chain = -1;
+    if (L.hair) L.hair.chain = -1;
+    L.coreChain = -1;
+  }
+  this.areaStates[this.areaId] = {
+    seed: this.seed, lesions: this.lesions,
+    wounds: { cuts: Wd.cuts, holes: Wd.holes, punct: Wd.punct, inj: Wd.inj, heat: Wd.heat },
+    decals: { patches: D.patches, dose: D.dose, gauzeCol: D.gauzeCol },
+    gpu: R.physA ? { physA: R.physA, physB: R.physB, film: R.film } : null,
+  };
+  R.physA = R.physB = R.film = null;
+  Wd.cuts = []; Wd.holes = []; Wd.punct = []; Wd.inj = []; Wd.heat = new Float32Array(Wd.N * Wd.N).fill(Wd.T0);
+  D.patches = []; D.dose = new Map(); D.gauzeCol = [0.95, 0.95, 0.93];
+  this.lesions = [];
+};
+// after setArea(): bring back the stored state of the new area (or make a fresh patch)
+PP.World.prototype.restoreArea = function () {
+  const R = this.render, st = this.areaStates && this.areaStates[this.areaId];
+  this.parts.clear(); this.phys.contacts.length = 0; this.activeLesion = null; R.drops.length = 0;
+  if (!st) { this.newPatch(); return; }
+  delete this.areaStates[this.areaId];
+  if (st.gpu) { R.physA = st.gpu.physA; R.physB = st.gpu.physB; R.film = st.gpu.film; R.drops.length = 0; }
+  else R.setupWorld();
+  this.seed = st.seed; this.rng = PP.rng((st.seed + Math.floor(this.time * 1000)) >>> 0); this.ctx.rng = this.rng;
+  this.lesions = st.lesions; this.lesions.forEach((L, i) => { L.id = i; });
+  if (st.wounds) Object.assign(this.wounds, st.wounds);
+  if (st.decals) Object.assign(this.decals, st.decals);
+  this.cam.x = this.cam.y = 0; this.cam.tx = this.cam.ty = 0; this.cam.vxp = this.cam.vyp = 0;
   this.activeUntil = this.time + 1;
   this.fx.patchChanged();
 };

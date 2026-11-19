@@ -228,4 +228,5 @@ PP.ICONS = {
 PP.CREDITS = [
   ['Skin macro photographs: Angela Roma (Pexels 7479574, 7479592, 7479507) and Karola G (Pexels 4046567), Pexels License. Cropped to skin only, de-lit and decomposed into melanin, hemoglobin and relief maps.', 'https://www.pexels.com/license/'],
   ['Studio lighting: Poly Haven "Monochrome Studio 04" HDRI (CC0).', 'https://polyhaven.com/a/monochrome_studio_04'],
+  ['Face and upper body: MakeHuman base mesh (CC0 1.0), cropped to a bust, subdivided, ambient occlusion baked.', 'https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md'],
 ];

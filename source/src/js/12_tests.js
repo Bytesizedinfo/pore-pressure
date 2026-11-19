@@ -7,7 +7,7 @@ PP.Tests = function (W) {
 PP.Tests.prototype.step = function (sec) { const n = Math.max(1, Math.round(sec / this.dt)); for (let i = 0; i < n; i++) this.W.step(this.dt); };
 PP.Tests.prototype.setup = async function (area, list, opt = {}) {
   const W = this.W;
-  if (W.areaId !== area) await PP.main.switchArea(area, true);
+  if (W.areaId !== area) await PP.main.switchArea(area);
   W.S.blood = opt.blood !== false; W.S.spurt = 1; W.S.ooze = 1; W.S.pain = false; W.S.shield = false; W.S.lens = true; W.S.bloodAmt = 1;
   W.rng = PP.rng(1234); W.ctx.rng = W.rng;
   W.parts.clear(); W.wounds.reset(); W.decals.reset(); W.render.setupWorld();
@@ -192,6 +192,33 @@ PP.Tests.prototype.all = async function () {
   const pt0 = L.pointing; this.hold('compress', 0, 0, 30, { keep: true }); W.timelapse(3 * 3600); W.tools.up();
   this.ok('boil_points_with_heat', L.pointing > pt0 + 0.3, { before: +pt0.toFixed(2), after: +L.pointing.toFixed(2), events: L.events });
 
+  // 15. dragging with Move (or holding Space) pans the skin and never touches it with an instrument
+  {
+    [L] = await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 2 });
+    const cv = document.getElementById('gl'), r = cv.getBoundingClientRect(), UI = PP.main.UI;
+    const ev = (type, x, y) => cv.dispatchEvent(new PointerEvent(type, { clientX: r.left + x, clientY: r.top + y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 7, pointerType: 'mouse', bubbles: true }));
+    const dragPan = () => { const x0 = W.cam.x; ev('pointerdown', r.width / 2, r.height / 2); for (let i = 1; i <= 8; i++) { ev('pointermove', r.width / 2 - i * 20, r.height / 2); W.step(this.dt); } ev('pointerup', r.width / 2 - 160, r.height / 2); this.step(0.2); return W.cam.x - x0; };
+    T.select('move'); const dMove = dragPan();
+    T.select('fingers'); UI.space = true; const dSpace = dragPan(); UI.space = false;
+    this.ok('move_space_pan', dMove > 1 && dSpace > 1 && !T.ptr.down && L.Pmax < 1 && !L.events.includes('pop'), { dMove: +dMove.toFixed(2), dSpace: +dSpace.toFixed(2), Pmax: +L.Pmax.toFixed(2), events: L.events });
+  }
+  // 16. zoom out to the face, dive into the nose, come back into the cheek: every area keeps its state
+  {
+    [L] = await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 0.4 });
+    this.hold('fingers', 0, 0, 2.5, { spread: 4.6 });
+    const B = PP.main.B; await B.load();
+    const run = async () => { for (let i = 0; i < 3000 && B.mode !== 'macro' && B.mode !== 'body'; i++) { B.update(1 / 30); await new Promise((r) => setTimeout(r, 2)); } };
+    await B.enter(); await run(); const m1 = B.mode;
+    B.dive('nose'); await run(); const inNose = W.areaId === 'nose' && B.mode === 'macro', nNose = W.lesions.length;
+    W.lesions[0].popped = true; const noseL = W.lesions[0];
+    await B.enter(); await run();
+    B.dive('cheek'); await run();
+    const back = W.lesions.find((x) => x.type === 'pustule');
+    const noseKept = W.areaStates.nose && W.areaStates.nose.lesions[0] === noseL && noseL.popped;
+    this.ok('body_roundtrip', m1 === 'body' && inNose && nNose > 0 && W.areaId === 'cheek' && back === L && L.events.includes('pop') && noseKept && W.render.physA,
+      { m1, inNose, nNose, area: W.areaId, same: back === L, popped: L.events.includes('pop'), noseKept: !!noseKept });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -235,6 +262,21 @@ PP.Tests.prototype.visual = async function (name) {
     W.wounds.addCut(-3, 1, -3 + Math.cos(a) * 4, 1 + Math.sin(a) * 4, 1.4, 'blade15', 1); W.wounds.addCut(3, -1, 3 - Math.sin(a) * 4, -1 + Math.cos(a) * 4, 1.4, 'blade15', 2);
     W.wounds.addPunch(0, -4, 2, 1.5); for (const h of W.wounds.holes) h.core = false;
     this.step(+(PP.params.get('t') || 3));
+  } else if (name === 'body' || name === 'bodyfade') {
+    await this.setup(PP.params.get('area') || 'cheek', [], { zoom: 0.375 }); W.newPatch(+(PP.params.get('seed') || 7));
+    const B = PP.main.B; await B.load(); W.ensureAreas();
+    const v = PP.params.get('view') || 'face';
+    let view;
+    if (B.anchors[v]) { const a = B.anchors[v], o = B.viewOf(a); view = { p: a.p.slice(), yaw: o.yaw, pitch: o.pitch, dist: B.distW(PP.AREAS[v].size * +(PP.params.get('k') || 3)) }; }
+    else view = B.overview(v === 'face' ? W.areaId : v);
+    if (PP.params.get('yaw')) view.yaw = +PP.params.get('yaw');
+    if (PP.params.get('pitch')) view.pitch = +PP.params.get('pitch');
+    if (PP.params.get('h')) view.dist = B.distH(+PP.params.get('h'));
+    await B.jump(view);
+    if (PP.params.get('hover')) B.hover = B.order.indexOf(PP.params.get('hover'));
+    if (PP.params.get('all')) B.showAll = 1;
+    if (name === 'bodyfade') { W.cam.zoom = W.cam.tz = W.area.view / B.widthAt(B.cam.dist); B.mode = 'entering'; B.fade = +(PP.params.get('f') || 0.5); B.freeze = true; }
+    else B.freeze = true;
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];

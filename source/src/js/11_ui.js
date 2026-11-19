@@ -43,7 +43,11 @@ PP.UI.prototype.build = function () {
   const area = $('area');
   area.innerHTML = Object.entries(PP.AREAS).map(([k, a]) => `<option value="${k}">${a.name}</option>`).join('');
   area.value = W.areaId;
-  area.addEventListener('change', async () => { await PP.main.switchArea(area.value); });
+  area.addEventListener('change', async () => {
+    const B = PP.main.B;
+    if (B && B.mode !== 'macro') { B.dive(area.value); return; }
+    await PP.main.switchArea(area.value);
+  });
   // tones
   const tones = $('tones');
   tones.innerHTML = PP.TONES.map((t, i) => `<button role="radio" aria-label="${t.name}" title="${t.name}" style="background:${t.hex}" data-i="${i}"></button>`).join('');
@@ -60,7 +64,16 @@ PP.UI.prototype.build = function () {
   // zoom controls
   $('zin').addEventListener('click', () => this.zoomBy(1.35));
   $('zout').addEventListener('click', () => this.zoomBy(1 / 1.35));
-  $('zfit').addEventListener('click', () => { W.cam.tz = this.zmin(); this.zoomBy(1); });
+  $('zfit').addEventListener('click', () => {
+    const B = PP.main.B;
+    if (B && B.mode !== 'macro') { if (B.interactive()) B.tween(B.overview(W.areaId), 0.7); return; }
+    W.cam.tz = this.zmin(); this.zoomBy(1);
+  });
+  $('zbody').addEventListener('click', () => {
+    const B = PP.main.B;
+    if (B.mode === 'macro') B.enter();
+    else if (B.interactive()) { const ov = B.overview(W.areaId); ov.dist = B.distH(560); ov.p = [0, 650, 40]; B.tween(ov, 0.8); }
+  });
   // add your own blemishes (any area)
   const add = $('addsel');
   const groups = {};
@@ -157,9 +170,16 @@ const STEP_TXT = { compress: 'Warm compress', needle: 'Sterile needle', loop: 'C
 
 PP.UI.prototype.renderInfo = function () {
   const W = this.W;
+  const B = PP.main.B;
+  if (B && B.mode !== 'macro') {
+    const n = B.order ? B.order.reduce((s, id) => s + B.areaLesions(id).length, 0) : 0;
+    const html = `<h4>Face and upper body</h4><div class="sub">${B.order ? B.order.length : 0} areas · ${n} blemishes</div><p>Drag to turn the head, scroll to zoom, right-drag to pan. Click a highlighted area, or zoom into it, to go back to the macro view. Everything you popped stays as you left it.</p><p class="sub">Face and body: MakeHuman base mesh (CC0), shaded with the same skin model as the close-ups.</p>`;
+    if (html !== this.lastInfo) { this.$('info').innerHTML = html; this.lastInfo = html; }
+    return;
+  }
   const L = W.activeLesion || this.sel;
   if (!L) {
-    const html = `<h4>${W.area.name}</h4><div class="sub">${W.lesions.length} lesions · patch ${W.area.size} mm · view ${W.cam.vw.toFixed(0)} mm</div><p>Hover a lesion to see what it is and how a clinician would treat it. Zoom with − / + (or scroll), right-drag to pan. Add your own from the Add blemish menu.</p><p class="sub">Simulation for entertainment and education. Don't pop at home; see a dermatologist.</p>`;
+    const html = `<h4>${W.area.name}</h4><div class="sub">${W.lesions.length} lesions · patch ${W.area.size} mm · view ${W.cam.vw.toFixed(0)} mm</div><p>Hover a lesion to see what it is and how a clinician would treat it. Zoom with − / + (or scroll), drag with Move, Space or the right button to pan; scroll out past the whole patch to see the face. Add your own from the Add blemish menu.</p><p class="sub">Simulation for entertainment and education. Don't pop at home; see a dermatologist.</p>`;
     if (html !== this.lastInfo) { this.$('info').innerHTML = html; this.lastInfo = html; }
     return;
   }
@@ -201,7 +221,8 @@ PP.UI.prototype.update = function (dt) {
     this.$('perf').hidden = false;
     this.$('perf').textContent = pf + (R.gpuMs != null ? ' · GPU ' + R.gpuMs.toFixed(1) + ' ms' : '') + ' · ' + Math.round((R.lastDs || 1) * 100) + '% res';
   } else this.$('perf').hidden = true;
-  const zt = W.cam.zoom.toFixed(1) + '×';
+  const B = PP.main.B, inBody = B && B.mode !== 'macro';
+  const zt = inBody ? (B.widthAt(B.cam.dist) / 10).toFixed(0) + ' cm' : W.cam.zoom.toFixed(1) + '×';
   if (this._zt !== zt) { this._zt = zt; this.$('zoomv').textContent = zt; }
   // ring at cursor
   const ring = this.$('ring');
@@ -226,9 +247,11 @@ PP.UI.prototype.toWorld = function (sx, sy) {
 PP.UI.prototype.bindInput = function () {
   const W = this.W, cv = this.canvas, T = W.tools;
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
+  const body = () => PP.main.B && PP.main.B.mode !== 'macro' ? PP.main.B : null;
   cv.addEventListener('pointerdown', (e) => {
     W.audio.start();
-    cv.setPointerCapture(e.pointerId);
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointers (tests) */ }
+    if (body()) { body().down(e); return; }
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     this.lastSX = e.clientX; this.lastSY = e.clientY;
     const p = this.toWorld(e.clientX, e.clientY);
@@ -257,6 +280,7 @@ PP.UI.prototype.bindInput = function () {
     T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 });
   });
   cv.addEventListener('pointermove', (e) => {
+    if (body()) { body().move(e); return; }
     const pt = this.ptrs.get(e.pointerId);
     if (pt) { pt.x = e.clientX; pt.y = e.clientY; }
     this.lastSX = e.clientX; this.lastSY = e.clientY;
@@ -279,6 +303,7 @@ PP.UI.prototype.bindInput = function () {
     if (this.pinch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (this.pinch.z0 * (d / this.pinch.d0) < this.zmin() * 0.8) { this.pinch = null; PP.main.B.enter(); return; }
       W.cam.zoom = W.cam.tz = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
       const r = cv.getBoundingClientRect();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -293,6 +318,7 @@ PP.UI.prototype.bindInput = function () {
     else T.move(p.x, p.y, { pressure: e.pointerType === 'pen' ? e.pressure : null });
   });
   const end = (e) => {
+    if (body()) { this.ptrs.delete(e.pointerId); body().up(e); return; }
     this.ptrs.delete(e.pointerId);
     if (this.eraseDrag) { this.eraseDrag = false; return; }
     if (this.pan && this.ptrs.size === 0) {
@@ -305,8 +331,10 @@ PP.UI.prototype.bindInput = function () {
   };
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', () => { if (body()) this.bodyLabel(null); });
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (body()) { body().wheel(e); return; }
     if (e.shiftKey) {
       const k = e.deltaY > 0 ? -1 : 1;
       if (T.id === 'fingers' || T.id === 'swabs') T.spread[T.id] = PP.clamp(T.spread[T.id] + k * 0.3, 1.5, 12);
@@ -319,6 +347,15 @@ PP.UI.prototype.bindInput = function () {
     const fx = (e.clientX - r.left) / r.width - 0.5, fy = 0.5 - (e.clientY - r.top) / r.height;
     const tvw0 = W.area.view / C.tz, tvh0 = (tvw0 * C.ch) / C.cw;
     const px = C.tx + fx * tvw0, py = C.ty + fy * tvh0;
+    // already showing the whole patch: keep scrolling out (a short detent) to pull back to the whole face
+    if (e.deltaY > 0 && C.tz <= this.zmin() * 1.001) {
+      // only count scrolling once the whole patch is actually on screen (a fast flick stops here first)
+      if (C.zoom <= this.zmin() * 1.04) this._over = (this._over || 0) + Math.min(e.deltaY, 120);
+      if (!this._overHint && this._over > 0) { this._overHint = 1; this.toast('', 'Whole patch', 'Keep scrolling out to see the whole face.'); }
+      if (this._over >= 180 && C.zoom <= this.zmin() * 1.04) { this._over = 0; PP.main.B.enter(); }
+      return;
+    }
+    this._over = 0;
     C.tz = PP.clamp(C.tz * Math.exp(-e.deltaY * 0.0018), this.zmin(), PP.UI.ZMAX);
     const tvw = W.area.view / C.tz, tvh = (tvw * C.ch) / C.cw;
     C.tx = px - fx * tvw; C.ty = py - fy * tvh;
@@ -345,6 +382,22 @@ PP.UI.prototype.bindInput = function () {
   });
 };
 PP.UI.ZMAX = 6;
+PP.UI.prototype.setBodyMode = function (on) {
+  document.body.classList.toggle('bodyview', !!on);
+  this.canvas.classList.toggle('orbit', !!on);
+  this.canvas.setAttribute('aria-label', on ? 'Whole face view: drag to turn, scroll to zoom, click an area to zoom in' : 'Macro skin view');
+  if (!on) this.bodyLabel(null);
+  this.lastInfo = ''; this.renderInfo();
+  if (on && !this._bodyHint) { this._bodyHint = 1; this.toast('', 'Whole face', 'Drag to turn, scroll to zoom. Click an outlined area or zoom into it to go back in.'); }
+};
+PP.UI.prototype.bodyLabel = function (h) {
+  const el = this.$('bodylabel');
+  if (!h) { el.hidden = true; this.canvas.classList.remove('pointing'); return; }
+  const A = PP.AREAS[h.id];
+  el.innerHTML = `<b>${A.name}</b> · ${h.n} blemish${h.n === 1 ? '' : 'es'} · click to zoom in`;
+  el.style.left = h.x + 'px'; el.style.top = h.y + 'px';
+  el.hidden = false; this.canvas.classList.add('pointing');
+};
 // zoom far enough out to see the whole skin patch
 PP.UI.prototype.zmin = function () { return Math.min(0.6, this.W.area.view / this.W.area.size); };
 PP.UI.prototype.setErase = function (on) {
@@ -376,7 +429,9 @@ PP.UI.prototype.clampCam = function () {
   C.y = C.vh / 2 >= s ? 0 : PP.clamp(C.y, -s + C.vh / 2, s - C.vh / 2);
 };
 PP.UI.prototype.zoomBy = function (k) {
-  const W = this.W, C = W.cam;
+  const W = this.W, C = W.cam, B = PP.main.B;
+  if (B && B.mode !== 'macro') { const r = this.canvas.getBoundingClientRect(); B.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / k); return; }
+  if (k < 1 && (C.tz || C.zoom) <= this.zmin() * 1.001) { B.enter(); return; }
   C.tz = PP.clamp((C.tz || C.zoom) * k, this.zmin(), PP.UI.ZMAX);
   this.clampTarget(); W.activeUntil = W.time + 1.5;
 };
