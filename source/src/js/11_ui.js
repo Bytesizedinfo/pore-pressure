@@ -173,13 +173,13 @@ PP.UI.prototype.renderInfo = function () {
   const B = PP.main.B;
   if (B && B.mode !== 'macro') {
     const n = B.order ? B.order.reduce((s, id) => s + B.areaLesions(id).length, 0) : 0;
-    const html = `<h4>Face and upper body</h4><div class="sub">${B.order ? B.order.length : 0} areas · ${n} blemishes</div><p>Drag to turn the head, scroll to zoom, right-drag to pan. Click a highlighted area, or zoom into it, to go back to the macro view. Everything you popped stays as you left it.</p><p class="sub">Face and body: MakeHuman base mesh (CC0), shaded with the same skin model as the close-ups.</p>`;
+    const html = `<h4>Face and upper body</h4><div class="sub">${B.order ? B.order.length : 0} areas · ${n} blemishes</div><p>Drag to move, right-drag (or Shift-drag, arrow keys, two fingers) to turn, scroll to zoom. Click any spot, or zoom into it, for a close-up there. Everything you popped stays as you left it.</p><p class="sub">Face and body: MakeHuman base mesh (CC0), shaded with the same skin model as the close-ups.</p>`;
     if (html !== this.lastInfo) { this.$('info').innerHTML = html; this.lastInfo = html; }
     return;
   }
   const L = W.activeLesion || this.sel;
   if (!L) {
-    const html = `<h4>${W.area.name}</h4><div class="sub">${W.lesions.length} lesions · patch ${W.area.size} mm · view ${W.cam.vw.toFixed(0)} mm</div><p>Hover a lesion to see what it is and how a clinician would treat it. Zoom with − / + (or scroll), drag with Move, Space or the right button to pan; scroll out past the whole patch to see the face. Add your own from the Add blemish menu.</p><p class="sub">Simulation for entertainment and education. Don't pop at home; see a dermatologist.</p>`;
+    const html = `<h4>${W.area.name}</h4><div class="sub">${W.lesions.length} lesions · patch ${W.area.size} mm · view ${W.cam.vw.toFixed(0)} mm</div><p>Hover a lesion to see what it is and how a clinician would treat it. Drag clear skin to move around (or use Move, Space, the right button); zoom with − / + or scroll, and scroll out past the whole patch to see the face. Add your own from the Add blemish menu.</p><p class="sub">Simulation for entertainment and education. Don't pop at home; see a dermatologist.</p>`;
     if (html !== this.lastInfo) { this.$('info').innerHTML = html; this.lastInfo = html; }
     return;
   }
@@ -268,8 +268,16 @@ PP.UI.prototype.bindInput = function () {
       this.sel = L; W.audio.click();
       return;
     }
+    // smart drag: a press on clear skin (nothing for this instrument to work on) pans when it moves,
+    // and becomes a normal press if held still; blades, needles and injections always act
+    if (e.button === 0 && this.ptrs.size === 1 && this.canPanFrom(p.x, p.y, T.id)) {
+      const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
+      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure }); } }, 220);
+      return;
+    }
     if (this.ptrs.size === 2) {
       // second finger: pinch squeeze with fingers/swabs, otherwise pan/zoom
+      this.cancelPending();
       T.up();
       const [a, b] = [...this.ptrs.values()];
       const wa = this.toWorld(a.x, a.y), wb = this.toWorld(b.x, b.y);
@@ -284,6 +292,12 @@ PP.UI.prototype.bindInput = function () {
     const pt = this.ptrs.get(e.pointerId);
     if (pt) { pt.x = e.clientX; pt.y = e.clientY; }
     this.lastSX = e.clientX; this.lastSY = e.clientY;
+    if (this.pending && Math.hypot(e.clientX - this.pending.sx, e.clientY - this.pending.sy) > 5) {
+      const q = this.pending; this.cancelPending();
+      this.pan = { sx: q.sx, sy: q.sy, cx: q.cx, cy: q.cy, lt: performance.now(), lx: W.cam.x, ly: W.cam.y };
+      W.cam.vxp = W.cam.vyp = 0; this.canvas.classList.add('grabbing');
+    }
+    if (this.pending) return;
     if (this.pan) {
       const r = cv.getBoundingClientRect(), C = W.cam, P = this.pan;
       C.x = P.cx - ((e.clientX - P.sx) / r.width) * C.vw;
@@ -314,12 +328,18 @@ PP.UI.prototype.bindInput = function () {
     }
     const p = this.toWorld(e.clientX, e.clientY);
     if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
-    if (!T.ptr.down) { T.ptr.x = p.x; T.ptr.y = p.y; T.ptr.lx = p.x; T.ptr.ly = p.y; }
+    if (!T.ptr.down) {
+      T.ptr.x = p.x; T.ptr.y = p.y; T.ptr.lx = p.x; T.ptr.ly = p.y;
+      // cursor: open hand over clear skin (drag to move), crosshair where the instrument would act
+      const now = performance.now();
+      if (now - (this._curT || 0) > 50) { this._curT = now; cv.classList.toggle('pannable', !this.placeType && !this.erasing && this.canPanFrom(p.x, p.y, T.id)); }
+    }
     else T.move(p.x, p.y, { pressure: e.pointerType === 'pen' ? e.pressure : null });
   });
   const end = (e) => {
     if (body()) { this.ptrs.delete(e.pointerId); body().up(e); return; }
     this.ptrs.delete(e.pointerId);
+    if (this.pending) { this.cancelPending(); return; }   // a quick click on clear skin does nothing
     if (this.eraseDrag) { this.eraseDrag = false; return; }
     if (this.pan && this.ptrs.size === 0) {
       if (performance.now() - this.pan.lt > 90) { W.cam.vxp = W.cam.vyp = 0; }   // released after stopping: no fling
@@ -369,6 +389,14 @@ PP.UI.prototype.bindInput = function () {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') && e.code === 'Space') return;
     if (e.code === 'Space') { e.preventDefault(); this.space = true; cv.classList.add('grab'); return; }
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+    const B = PP.main.B;
+    if (B && B.interactive() && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const s = e.shiftKey ? 3 : 1;
+      if (e.key === 'ArrowLeft') B.turn(-24 * s, 0); else if (e.key === 'ArrowRight') B.turn(24 * s, 0);
+      else if (e.key === 'ArrowUp') B.turn(0, -20 * s); else B.turn(0, 20 * s);
+      return;
+    }
     const k = e.key.toUpperCase();
     const t = PP.TOOLS.find((x) => x.key === k);
     if (t) { T.select(t.id); return; }
@@ -382,19 +410,42 @@ PP.UI.prototype.bindInput = function () {
   });
 };
 PP.UI.ZMAX = 6;
+// instruments that only do something on or right next to a blemish, an opening or extruded material
+PP.UI.PANNABLE = new Set(['fingers', 'swabs', 'loop', 'vacuum', 'hemostat', 'forceps', 'curette', 'packing']);
+PP.UI.prototype.canPanFrom = function (x, y, id) {
+  if (!PP.UI.PANNABLE.has(id)) return false;
+  const W = this.W, T = W.tools, Wd = W.wounds, P = W.parts;
+  const reach = id === 'fingers' || id === 'swabs' ? (T.spread[id] || 4) + 1 : 2.5;
+  for (const L of W.lesions) if (Math.hypot(x - L.x - L.ox, y - L.y - L.oy) - L.R < reach) return false;
+  for (const c of Wd.cuts) if (Wd.segDist(c, x, y) < 3) return false;
+  for (const h of Wd.holes) if (Math.hypot(x - h.x, y - h.y) < h.r + 3) return false;
+  for (const q of Wd.punct) if (Math.hypot(x - q.x, y - q.y) < 3) return false;
+  if (P.nearest(x, y, id === 'fingers' || id === 'swabs' ? reach : 2, (k) => !P.isLiquid(P.mat[k])) >= 0) return false;
+  return true;
+};
+PP.UI.prototype.cancelPending = function () { if (this.pending) { clearTimeout(this.pending.timer); this.pending = null; } };
+// close-ups you open on the face/body appear in the area menu under their own heading
+PP.UI.prototype.addSpotOption = function (id) {
+  const sel = this.$('area');
+  let g = sel.querySelector('optgroup[data-spots]');
+  if (!g) { g = document.createElement('optgroup'); g.label = 'Your close-ups'; g.dataset.spots = '1'; sel.appendChild(g); }
+  const o = document.createElement('option'); o.value = id; o.textContent = PP.AREAS[id].name; g.appendChild(o);
+};
+PP.UI.prototype.removeSpotOption = function (id) {
+  const o = this.$('area').querySelector('option[value="' + id + '"]'); if (o) o.remove();
+};
 PP.UI.prototype.setBodyMode = function (on) {
   document.body.classList.toggle('bodyview', !!on);
   this.canvas.classList.toggle('orbit', !!on);
   this.canvas.setAttribute('aria-label', on ? 'Whole face view: drag to turn, scroll to zoom, click an area to zoom in' : 'Macro skin view');
   if (!on) this.bodyLabel(null);
   this.lastInfo = ''; this.renderInfo();
-  if (on && !this._bodyHint) { this._bodyHint = 1; this.toast('', 'Whole face', 'Drag to turn, scroll to zoom. Click an outlined area or zoom into it to go back in.'); }
+  if (on && !this._bodyHint) { this._bodyHint = 1; this.toast('', 'Whole face', 'Drag to move, right-drag to turn, scroll to zoom. Click any spot or zoom into it for a close-up.'); }
 };
 PP.UI.prototype.bodyLabel = function (h) {
   const el = this.$('bodylabel');
   if (!h) { el.hidden = true; this.canvas.classList.remove('pointing'); return; }
-  const A = PP.AREAS[h.id];
-  el.innerHTML = `<b>${A.name}</b> · ${h.n} blemish${h.n === 1 ? '' : 'es'} · click to zoom in`;
+  el.innerHTML = `<b>${h.title}</b> · ${h.sub}`;
   el.style.left = h.x + 'px'; el.style.top = h.y + 'px';
   el.hidden = false; this.canvas.classList.add('pointing');
 };

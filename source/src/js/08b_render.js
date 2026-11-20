@@ -207,7 +207,9 @@ PP.Renderer.prototype.uploadLesions = function () {
   const gd = this.gridData; gd.fill(0);
   const best = new Float32Array(N * N * 4).fill(1e9);
   Ls.forEach((L, i) => {
-    const ext = L.R * (L.T.vis >= 15 && L.T.vis <= 18 ? 1.25 : 2.4) + 1.0 + Math.hypot(L.ox, L.oy);
+    // cover the whole inflammatory halo (exp(-r^2 / (R^2 (2.2 + 1.5 infl)))) so it never ends at a cell edge
+    const infl = L.inflam + L.deep * 0.4 + L.irrit * 0.5;
+    const ext = L.R * (L.T.vis >= 15 && L.T.vis <= 18 ? 1.25 : Math.max(2.4, 2.4 * Math.sqrt(2.2 + 1.5 * Math.max(0, infl)) * (infl > 0.05 ? 1 : 0.5))) + 1.0 + Math.hypot(L.ox, L.oy);
     const cx = L.x + L.ox, cy = L.y + L.oy;
     const x0 = Math.max(0, Math.floor((cx - ext + s / 2) / cell)), x1 = Math.min(N - 1, Math.floor((cx + ext + s / 2) / cell));
     const y0 = Math.max(0, Math.floor((cy - ext + s / 2) / cell)), y1 = Math.min(N - 1, Math.floor((cy + ext + s / 2) / cell));
@@ -230,16 +232,27 @@ PP.Renderer.prototype.uploadLesions = function () {
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 64, gl.RED, gl.UNSIGNED_BYTE, hb);
 };
 
-PP.Renderer.prototype.contactUniforms = function (prog) {
-  const gl = this.gl, C = this.W.phys.contacts;
-  const n = Math.min(48, C.length);
+// live contacts; with relaxing=true (deformation pass) also the decaying loads left by a release, and the pinch fold
+PP.Renderer.prototype.contactUniforms = function (prog, relaxing) {
+  const gl = this.gl, ph = this.W.phys, C = ph.contacts, Gs = relaxing ? ph.ghosts : [];
   const a = this._c0 || (this._c0 = new Float32Array(48 * 4)), b = this._c1 || (this._c1 = new Float32Array(48 * 4));
-  for (let i = 0; i < n; i++) {
-    const c = C[i], o = i * 4;
-    a[o] = c.x; a[o + 1] = c.y; a[o + 2] = c.a; a[o + 3] = c.fn || 0;
-    b[o] = c.qx || 0; b[o + 1] = c.qy || 0; b[o + 2] = c.suction || 0; b[o + 3] = 0;
-  }
+  const gk = Gs.length ? ph.ghostK() : 0;
+  let n = 0;
+  const put = (c, s) => {
+    if (n >= 48) return;
+    const o = n * 4;
+    a[o] = c.x; a[o + 1] = c.y; a[o + 2] = c.aV || c.a; a[o + 3] = (c.fn || 0) * s;
+    b[o] = (c.qx || 0) * s; b[o + 1] = (c.qy || 0) * s; b[o + 2] = (c.suction || 0) * s; b[o + 3] = c.pad ? 1 : 0;
+    n++;
+  };
+  for (const c of C) put(c, 1);
+  for (const c of Gs) put(c, gk);
   gl.uniform4fv(prog.u.uC0, a); gl.uniform4fv(prog.u.uC1, b); gl.uniform1i(prog.u.uNC, n);
+  if (prog.u.uPinch0) {
+    const F = relaxing ? ph.foldNow() : null;
+    if (F) { const P = F.P; gl.uniform4f(prog.u.uPinch0, P.mx, P.my, P.ux, P.uy); gl.uniform4f(prog.u.uPinch1, P.Ls, P.h * F.k, P.wp, 1); }
+    else gl.uniform4f(prog.u.uPinch1, 1, 0, 1, 0);
+  }
 };
 PP.Renderer.prototype.woundUniforms = function (prog) {
   const gl = this.gl, Wd = this.W.wounds, clock = this.W.clock;
@@ -359,7 +372,7 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   // 3. deformation (half res)
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.def.fb); gl.viewport(0, 0, dw, dh);
   gl.useProgram(P.def.p); this.camUniforms(P.def, dw, dh);
-  this.contactUniforms(P.def); this.woundUniforms(P.def);
+  this.contactUniforms(P.def, true); this.woundUniforms(P.def);
   gl.uniform1f(P.def.u.uNu, ph.nu); gl.uniform1f(P.def.u.uEn, ph.En); gl.uniform1f(P.def.u.uG, ph.G); gl.uniform1f(P.def.u.uLd, ph.Ld); gl.uniform1f(P.def.u.uHeff, ph.Heff);
   gl.uniform2f(P.def.u.uT, ph.tx, ph.ty);
   G.drawFS();
@@ -487,10 +500,12 @@ PP.Renderer.prototype.buildInstances = function () {
   for (let i = 0; i < P.hi && n < maxN - 200; i++) {
     if (!P.alive[i]) continue;
     const j = P.next[i], m = P.mat[i];
-    if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i], P.r[i], P.x[j], P.y[j], P.z[j], P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
+    // material resting on a squeezed fold rides up with it (visual lift, see World.buildHeightGrid)
+    const li = W.liftAt(P.x[i], P.y[i]);
+    if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i] + li, P.r[i], P.x[j], P.y[j], P.z[j] + W.liftAt(P.x[j], P.y[j]), P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
     else if (P.prev[i] < 0) {
       // free particle: liquids flatten into a sessile bead on the skin
-      const r = P.r[i], z = P.onSkin[i] && P.isLiquid(m) ? P.z[i] - r * 0.55 : P.z[i];
+      const r = P.r[i], z = (P.onSkin[i] && P.isLiquid(m) ? P.z[i] - r * 0.55 : P.z[i]) + li;
       put(P.x[i], P.y[i], z, r, P.x[i], P.y[i], z, r, 0, m, P.cr[i], P.cg[i], P.cb[i]);
     }
   }

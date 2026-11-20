@@ -32,6 +32,14 @@ uniform vec4 uCut0[16]; uniform vec4 uCut1[16]; uniform int uNCut;
 uniform vec4 uHole0[8]; uniform vec4 uHole1[8]; uniform int uNH;
 uniform vec2 uT;   // tension-line direction
 uniform vec4 uInj[8]; uniform vec4 uInj2[8]; uniform int uNI;
+uniform vec4 uPinch0, uPinch1;   // pinch fold: midpoint, axis | span, height, pad width, on
+float foldW(vec2 p){
+  if(uPinch1.w<0.5) return 0.0;
+  vec2 d=p-uPinch0.xy; float s=dot(d,uPinch0.zw), q=dot(d,vec2(-uPinch0.w,uPinch0.z));
+  if(abs(s)>=uPinch1.x*0.5) return 0.0;
+  float c=cos(3.14159265*s/uPinch1.x);
+  return uPinch1.y*c*c*exp(-(q*q)/(0.3*uPinch1.z*uPinch1.z));
+}
 float dentW(float fn, float a, float r){
   float w0 = 2.0*(1.0-uNu*uNu)*fn/(3.14159265*a*uEn);
   float p = r/a;
@@ -49,7 +57,11 @@ vec3 field(vec2 p){
   for(int i=0;i<uNC;i++){
     vec4 c0=uC0[i], c1=uC1[i];
     vec2 d = p-c0.xy; float r = length(d);
-    if(c0.w>0.0) w += dentW(c0.w, c0.z, r);
+    if(c0.w>0.0){
+      w += dentW(c0.w, c0.z, r);
+      // soft pads: displaced, nearly incompressible tissue rises in a low rim around the pad
+      if(c1.w>0.5) w -= 0.12*dentW(c0.w, c0.z, 0.0)*exp(-pow((r-1.25*c0.z)/(0.45*c0.z),2.0));
+    }
     if(c1.z>0.0) w -= 0.5*dentW(c1.z*1e-3*3.14159265*c0.z*c0.z, c0.z, r);
     if(abs(c1.x)+abs(c1.y)>0.0) u += cerruti(c1.xy, c0.z, d);
   }
@@ -89,12 +101,16 @@ void main(){
   vec3 f0 = field(p), fx = field(p+vec2(h,0.0)), fy = field(p+vec2(0.0,h));
   float exx=(fx.x-f0.x)/h, eyy=(fy.y-f0.y)/h, exy=0.5*((fx.y-f0.y)/h+(fy.x-f0.x)/h);
   float div = exx+eyy;
-  float w = f0.z - uHeff*div;
+  float th = -uHeff*div;
+  // the pinch fold takes over where it rises above the small-strain thickening
+  float fold = foldW(p);
+  float w = f0.z + th + max(0.0, fold - max(0.0, th));
   float tr = 0.5*(exx+eyy), dd = sqrt(0.25*(exx-eyy)*(exx-eyy)+exy*exy);
   float lmin = tr-dd, lmax = tr+dd;
   vec2 dir = abs(exy)>1e-6 ? normalize(vec2(lmin-eyy, exy)) : (exx<eyy?vec2(1,0):vec2(0,1));
   o0 = vec4(f0.xy, w, div);
-  o1 = vec4(lmin, dir, max(lmax,0.0));
+  // the fold crest is bent over a short span: its surface is stretched (pales, smooths, shines)
+  o1 = vec4(lmin, dir, max(lmax,0.0) + 0.3*fold/max(uPinch1.x,1.0));
 }`;
 
 /* ---------- precompute micro-relief gradient from height maps ---------- */
@@ -474,6 +490,10 @@ void main(){
   float m = uTone.x + uToneA.x*cn.x + uTone.x*0.10*(fbm(X*0.045)-0.5);
   float perf = ph0.r;
   float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.22*max(0.0,perf-1.0);
+  // tension blanching: skin stretched over the fold crest or a tense dome is pressed thin and pales;
+  // the compressed flanks pool a little blood
+  hem *= 1.0 - 0.45*clamp(d1.w*6.0,0.0,1.0) - 0.15*lo.stretch;
+  hem += 0.05*comp;
   hem += lo.hem + 0.22*ph0.b + 0.12*clamp((heat-33.0)/7.0,0.0,1.0) + 0.25*lip + 0.4*pun;
   float deox = lo.deox + ph0.a*0.6;
   float sh = uTone.z + uToneA.z*cn.z*0.6;
@@ -608,7 +628,9 @@ void main(){
         oIrr = vec4(0.0); oAlb = vec4(0.0,0.0,0.0, ob.x);
         oSpec = vec4(alb*irr*Tr + Fo*sI*1.15 + base*dI*(1.0-trans)*0.6, 1.0);
       } else {
-        oIrr = vec4(irr*Tr, 1.0);
+        // skin seen through a glove/gauze/film: it gets light through the cover, but light scattered in from the
+        // bright skin around it must not glow through as a red rim (alpha 0.75 = covered: mostly direct light)
+        oIrr = vec4(irr*Tr, 0.75);
         oAlb = vec4(alb*mix(vec3(1.0), base, mat==33?0.0:0.25), max(skinH, ob.x));
         oSpec = vec4(spec*Tr + Fo*sI*(mat==33?1.4:1.0) + base*dI*(1.0-trans)*0.6, 0.0);
       }
@@ -642,7 +664,7 @@ vec4 texS(sampler2D t, vec2 uv){ return texture(t, clamp(uv, vec2(0.0), vec2(1.0
 void main(){
   vec4 a=texS(uAlb,vUv), s=texS(uSpec,vUv), i=texS(uSss,vUv), i0=texS(uIrr0,vUv);
   // 65% diffused light + 35% direct: millimetre-scale shape stays legible, skin still reads soft
-  vec3 irr = i0.a>0.5 ? mix(i0.rgb, i.rgb, 0.65) : i.rgb;
+  vec3 irr = i0.a>0.5 ? mix(i0.rgb, i.rgb, i0.a>0.9 ? 0.65 : 0.1) : i.rgb;
   vec3 c = s.a>0.5 ? s.rgb : a.rgb*irr + s.rgb;
   if(uDbgC==7) c=i.rgb*0.6; else if(uDbgC==8) c=i0.rgb*0.6; else if(uDbgC==9) c=vec3(i.a,i0.a,s.a);
   o=vec4(c, a.a);

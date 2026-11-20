@@ -35,9 +35,10 @@ PP.World.prototype.setArea = function (id) {
   this.phys.setArea(this.area);
   const g = this.area.grav;
   this.gravity = [g[0] * 9810, g[1] * 9810, g[2] * 9810];
-  this.detScale = id === 'back' || id === 'scalp' ? 1.0 : 0.55;
-  this.detAmt = id === 'back' || id === 'scalp' ? 0.35 : 0.22;
-  this.reliefK = id === 'nose' ? 1.5 : 1.35;
+  const base = this.area.base || id, bodySkin = this.area.set === 'body';
+  this.detScale = bodySkin ? 1.0 : 0.55;
+  this.detAmt = bodySkin ? 0.35 : 0.22;
+  this.reliefK = base === 'nose' ? 1.5 : 1.35;
   PP.storage.set('area', id);
 };
 
@@ -60,7 +61,7 @@ PP.World.prototype.skinColLin = function () { return this.skinLin || [0.7, 0.5, 
 PP.World.prototype.newPatch = function (seed) {
   if (seed != null) this.seed = seed;
   this.rng = PP.rng(this.seed); this.ctx.rng = this.rng;
-  this.parts.clear(); this.wounds.reset(); this.decals.reset();
+  this.parts.clear(); this.wounds.reset(); this.decals.reset(); this.phys.clearGhosts();
   this.lesions = []; this.clock = 0; this.ctx.clock = 0;
   this.render.setupWorld();
   this.cam.x = 0; this.cam.y = 0; this.cam.zoom = 1;
@@ -73,7 +74,7 @@ PP.World.prototype.newPatch = function (seed) {
   this.fx.patchChanged();
 };
 // scatter an area's typical blemish mix over its patch (big ones first, no overlaps)
-PP.World.prototype.genLesions = function (A, rng) {
+PP.World.prototype.genLesions = function (A, rng, accept) {
   const out = [], placed = [];
   const tryPlace = (type, d) => {
     const T = PP.LTYPES[type];
@@ -82,7 +83,7 @@ PP.World.prototype.genLesions = function (A, rng) {
       const span = A.size * 0.42;
       const x = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1), y = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
       const R = (d || (T.d[0] + T.d[1]) / 2) / 2;
-      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + (type === 'filament' ? 0.8 : 2.5));
+      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + (type === 'filament' ? 0.8 : 2.5)) && (!accept || accept(x, y, R));
       if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R }); return; }
     }
   };
@@ -126,7 +127,7 @@ PP.World.prototype.stashArea = function () {
 // after setArea(): bring back the stored state of the new area (or make a fresh patch)
 PP.World.prototype.restoreArea = function () {
   const R = this.render, st = this.areaStates && this.areaStates[this.areaId];
-  this.parts.clear(); this.phys.contacts.length = 0; this.activeLesion = null; R.drops.length = 0;
+  this.parts.clear(); this.phys.contacts.length = 0; this.phys.clearGhosts(); this.activeLesion = null; R.drops.length = 0;
   if (!st) { this.newPatch(); return; }
   delete this.areaStates[this.areaId];
   if (st.gpu) { R.physA = st.gpu.physA; R.physB = st.gpu.physB; R.film = st.gpu.film; R.drops.length = 0; }
@@ -141,6 +142,7 @@ PP.World.prototype.restoreArea = function () {
 };
 
 PP.World.prototype.clearPatch = function () {
+  this.phys.clearGhosts();
   this.parts.clear(); this.wounds.reset(); this.decals.reset(); this.render.setupWorld();
   this.lesions = []; this.fx.patchChanged();
 };
@@ -154,30 +156,60 @@ PP.World.prototype.buildHeightGrid = function () {
   // one pass: dents + in-plane displacement per node; thickening (-Heff * div u) from grid differences
   const C = this.cam, G = this.grid, ph = this.phys;
   const nx = 56, ny = Math.max(20, Math.round((56 * C.vh) / C.vw));
-  if (G.n !== nx * ny) { G.h = new Float32Array(nx * ny); G.ux = new Float32Array(nx * ny); G.uy = new Float32Array(nx * ny); G.n = nx * ny; }
+  if (G.n !== nx * ny) { G.h = new Float32Array(nx * ny); G.ux = new Float32Array(nx * ny); G.uy = new Float32Array(nx * ny); G.lift = new Float32Array(nx * ny); G.n = nx * ny; }
+  G.lift.fill(0); G.hasLift = false;
   G.nx = nx; G.ny = ny;
   const pad = 6;
   G.x0 = C.x - C.vw / 2 - pad; G.y0 = C.y - C.vh / 2 - pad; G.dx = (C.vw + 2 * pad) / (nx - 1); G.dy = (C.vh + 2 * pad) / (ny - 1);
-  const cs = ph.contacts, hasQ = cs.some((c) => c.qx || c.qy);
-  const tmp = [0, 0];
+  // live loads plus relaxing ones (viscoelastic recovery after release); ghosts are scaled by their decay
+  const gk = ph.ghosts.length ? ph.ghostK() : 0;
+  const cs = ph.contacts, gs = ph.ghosts, hasQ = cs.some((c) => c.qx || c.qy) || gs.some((c) => c.qx || c.qy);
+  const tmp = [0, 0], fold = ph.foldNow();
+  const load = (c, x, y, s) => {
+    const r = Math.hypot(x - c.x, y - c.y);
+    if (r > 6 * ph.Ld) return 0;
+    let w = 0;
+    if (c.fn) w += ph.dentW(c.fn * s, c.aV || c.a, r);
+    if (c.suction) w -= ph.dentW(c.suction * s * 1e-3 * Math.PI * c.a * c.a, c.a, r) * 0.5;
+    return w;
+  };
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const x = G.x0 + i * G.dx, y = G.y0 + j * G.dy, k = j * nx + i;
     let w = 0;
-    for (const c of cs) {
-      const r = Math.hypot(x - c.x, y - c.y);
-      if (r > 6 * ph.Ld) continue;
-      if (c.fn) w += ph.dentW(c.fn, c.a, r);
-      if (c.suction) w -= ph.dentW(c.suction * 1e-3 * Math.PI * c.a * c.a, c.a, r) * 0.5;
+    for (const c of cs) w += load(c, x, y, 1);
+    for (const c of gs) w += load(c, x, y, gk);
+    if (hasQ) {
+      ph.uAt(x, y, tmp); G.ux[k] = tmp[0]; G.uy[k] = tmp[1];
+      // (tmp is reused below for the relaxing loads)
+      for (const c of gs) if (c.qx || c.qy) { tmp[0] = 0; tmp[1] = 0; ph.cerruti(c.qx * gk, c.qy * gk, c.a, x - c.x, y - c.y, tmp); G.ux[k] += tmp[0]; G.uy[k] += tmp[1]; }
     }
-    if (hasQ) { ph.uAt(x, y, tmp); G.ux[k] = tmp[0]; G.uy[k] = tmp[1]; }
     G.h[k] = w + this.lesionH(x, y);
   }
   if (hasQ) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
     const k = j * nx + i;
     const div = (G.ux[k + 1] - G.ux[k - 1]) / (2 * G.dx) + (G.uy[k + nx] - G.uy[k - nx]) / (2 * G.dy);
-    G.h[k] -= ph.Heff * div;
+    const th = -ph.Heff * div;
+    G.h[k] += th;
+    // large-deformation shape (pinch fold where it rises above the small-strain thickening, pad pile-up rims):
+    // a visual lift drawn by the deformation pass and applied to everything resting on the skin there, so
+    // extruded contents ride on the fold; the calibrated contact/flow physics keeps the small-strain surface
+    const x = G.x0 + i * G.dx, y = G.y0 + j * G.dy;
+    let lift = fold ? Math.max(0, fold.k * ph.foldW(x, y, fold.P) - Math.max(0, th)) : 0;
+    for (const c of cs) if (c.pad && c.fn) lift += ph.pileUp(c, Math.hypot(x - c.x, y - c.y));
+    for (const c of gs) if (c.pad && c.fn) lift += gk * ph.pileUp(c, Math.hypot(x - c.x, y - c.y));
+    if (lift) { G.lift[k] = lift; G.hasLift = true; }
   }
 };
+PP.World.prototype.liftAt = function (x, y) {
+  const G = this.grid;
+  if (!G.hasLift) return 0;
+  const fx = (x - G.x0) / G.dx, fy = (y - G.y0) / G.dy;
+  if (fx < 0 || fy < 0 || fx >= G.nx - 1 || fy >= G.ny - 1) return 0;
+  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j, n = G.nx, h = G.lift;
+  return (h[j * n + i] * (1 - u) + h[j * n + i + 1] * u) * (1 - v) + (h[(j + 1) * n + i] * (1 - u) + h[(j + 1) * n + i + 1] * u) * v;
+};
+// the surface as drawn (physics surface + large-deformation lift)
+PP.World.prototype.visH = function (x, y) { return this.skinH(x, y) + this.liftAt(x, y); };
 PP.World.prototype.lesionH = function (x, y) {
   let h = 0;
   for (const L of this.lesions) {

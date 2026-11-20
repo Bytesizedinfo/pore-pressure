@@ -46,7 +46,7 @@ with sync_playwright() as p:
     pg.wait_for_timeout(6000)
     pg.screenshot(path=pre + "2_face.png", timeout=180000)
     # hover the nose: find its screen position from the anchor
-    pos = pg.evaluate("""() => { const B = PP.main.B; B.matrices(); const a = B.anchors.nose.p, m = B.VP;
+    pos = pg.evaluate("""() => { const B = PP.main.B; B.matrices(); const a = B.raycast([36, 598, 600], [0, 0, -1]).p, m = B.VP;
         const x = m[0]*a[0]+m[4]*a[1]+m[8]*a[2]+m[12], y = m[1]*a[0]+m[5]*a[1]+m[9]*a[2]+m[13], w = m[3]*a[0]+m[7]*a[1]+m[11]*a[2]+m[15];
         const r = B.R.canvas.getBoundingClientRect(); return [r.left + (x/w*0.5+0.5)*r.width, r.top + (0.5-y/w*0.5)*r.height]; }""")
     pg.mouse.move(pos[0] - 3, pos[1] - 3); pg.wait_for_timeout(300); pg.mouse.move(pos[0], pos[1]); pg.wait_for_timeout(2500)
@@ -59,7 +59,7 @@ with sync_playwright() as p:
     print("diving->", s, "%.1fs" % (time.time() - t0))
     s = wait_mode(pg, ("macro",), 120)
     pg.wait_for_timeout(2500)
-    print("back in macro", state(pg))
+    print("back in macro", state(pg), pg.evaluate("() => PP.main.W.area.name"))
     pg.screenshot(path=pre + "4_nose.png", timeout=180000)
     # zoom back out with the - key and return to the cheek through the area menu
     for k in range(8):

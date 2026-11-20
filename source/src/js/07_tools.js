@@ -190,7 +190,9 @@ PP.Tools.prototype.patch = function (x, y) {
 // ------------------------------------------------------------------------------------------------
 PP.Tools.prototype.update = function (dt) {
   const W = this.W, p = this.ptr, ph = W.phys;
-  ph.contacts.length = 0;
+  // keep last step's loads: if nothing presses this step, they relax viscoelastically instead of vanishing
+  const prev = ph.contacts; ph.contacts = ph._spare || []; ph._spare = prev; ph.contacts.length = 0;
+  const prevPinch = ph.pinch; ph.pinch = null;
   W.wounds.press.length = 0;
   this.nPrim = 0;
   this.force = 0;
@@ -205,7 +207,6 @@ PP.Tools.prototype.update = function (dt) {
   if (id === 'fingers' || id === 'swabs') {
     const isF = id === 'fingers';
     let c1, c2, F = 0;
-    const a = isF ? 4.2 : 2.0;
     if (this.touch) {
       c1 = this.touch.a; c2 = this.touch.b;
       const d = Math.hypot(c2.x - c1.x, c2.y - c1.y);
@@ -217,23 +218,40 @@ PP.Tools.prototype.update = function (dt) {
       F = ramp(0.9, isF ? (p.shift ? 10 : 6) : 3);
     }
     if (c1 && c2) {
+      // soft pads: a thumb pad contacts ~51.6 mm^2 at 1.5 N and ~65.7 mm^2 at 5 N (area ~ F^0.19); cotton tips barely spread
+      // the visible footprint grows with force; cavity loading keeps the calibrated equivalent disc
+      // (4.2 mm, ~55 mm^2, mid-range of the measured areas) so extraction behaviour stays as validated
+      const aV = isF ? Math.sqrt((51.6 * Math.pow(Math.max(F, 0.3) / 1.5, 0.19)) / Math.PI) : 2.0 * (1 + 0.05 * Math.min(F, 4));
+      const a = isF ? 4.2 : 2.0;
       // wet gloves lose grip: lower friction (cal 0.8 dry -> 0.25 wet) and the pads slide inward
       const mu = isF ? PP.lerp(0.8, 0.25, PP.clamp(this.wet, 0, 1)) : 0.6;
       if (isF && this.wet > 0.5 && F > 3 && !this.touch) this.spread.fingers = Math.max(2.2, this.spread.fingers - dt * 0.6 * this.wet);
       const dx = c2.x - c1.x, dy = c2.y - c1.y, d = Math.hypot(dx, dy) + 1e-6, ux = dx / d, uy = dy / d;
-      ph.contacts.push({ x: c1.x, y: c1.y, a, fn: 0.45 * F, qx: ux * F * mu, qy: uy * F * mu });
-      ph.contacts.push({ x: c2.x, y: c2.y, a, fn: 0.45 * F, qx: -ux * F * mu, qy: -uy * F * mu });
+      ph.contacts.push({ x: c1.x, y: c1.y, a, aV, fn: 0.45 * F, qx: ux * F * mu, qy: uy * F * mu, pad: 1 });
+      ph.contacts.push({ x: c2.x, y: c2.y, a, aV, fn: 0.45 * F, qx: -ux * F * mu, qy: -uy * F * mu, pad: 1 });
       this.force = F; this.forceMax = isF ? 10 : 4;
+      // the pads grip the skin and travel inward with it (stick); the shortened skin between them folds up
+      const tu = this._tu || (this._tu = [0, 0]);
+      ph.uAt(c1.x, c1.y, tu); const t1 = PP.clamp(tu[0] * ux + tu[1] * uy, 0, 0.15 * d);
+      ph.uAt(c2.x, c2.y, tu); const t2 = PP.clamp(-(tu[0] * ux + tu[1] * uy), 0, 0.15 * d);
+      const delta = t1 + t2;
+      ph.pinch = { mx: (c1.x + c2.x) / 2, my: (c1.y + c2.y) / 2, ux, uy, Ls: d, wp: 2 * aV,
+        h: Math.min(0.66 * (2 / Math.PI) * Math.sqrt(d * delta), 0.35 * d, 3.5), delta };
+      this.padTravel = delta; this.padA = aV;
       const zOf = (c) => W.skinH(c.x, c.y);
       if (isF) {
-        for (const [c, sgn] of [[c1, -1], [c2, 1]]) {
-          // distal fingertip: ~9 mm wide at the tip, widening toward the knuckle, rising out of frame
-          const z0 = zOf(c) + 3.9;
-          this.prim([c.x + ux * sgn * 1.2, c.y + uy * sgn * 1.2, z0, 4.4, c.x + ux * sgn * 24, c.y + uy * sgn * 24 + 5, z0 + 24, 7.0], 1, PP.MATOBJ.nitrile, [0.24, 0.2, 0.62, this.wet]);
+        // the soft fingertip sinks into its dent and flattens: the 4.4 mm tip sphere is lowered so its
+        // intersection with the skin (the visible contact face) widens with force
+        const flat = 0.35 + 0.16 * Math.min(F, 8);
+        for (const [c, sgn, tr] of [[c1, -1, t1], [c2, 1, t2]]) {
+          const cx = c.x - ux * sgn * tr, cy = c.y - uy * sgn * tr;
+          const z0 = zOf(c) + 4.4 - flat;
+          this.prim([cx + ux * sgn * 1.2, cy + uy * sgn * 1.2, z0, 4.4, cx + ux * sgn * 24, cy + uy * sgn * 24 + 5, z0 + 24, 7.0], 1, PP.MATOBJ.nitrile, [0.24, 0.2, 0.62, this.wet]);
         }
       } else {
-        for (const [c, sgn] of [[c1, -1], [c2, 1]]) {
-          const z0 = zOf(c) + 1.7;
+        for (const [c0, sgn, tr] of [[c1, -1, t1], [c2, 1, t2]]) {
+          const c = { x: c0.x - ux * sgn * tr, y: c0.y - uy * sgn * tr };
+          const z0 = zOf(c0) + 1.7;
           this.prim([c.x - ux * sgn * 0.6, c.y - uy * sgn * 0.6, z0, 1.9, c.x + ux * sgn * 3.2, c.y + uy * sgn * 3.2, z0 + 1.4, 2.0], 1, PP.MATOBJ.cotton, this.swabStain || [0.86, 0.85, 0.82, 0]);
           this.prim([c.x + ux * sgn * 4.5, c.y + uy * sgn * 4.5, z0 + 1.6, 0.9, c.x + ux * sgn * 40, c.y + uy * sgn * 40, z0 + 26, 0.9], 1, PP.MATOBJ.paper, [0.9, 0.9, 0.88, 0]);
         }
@@ -479,6 +497,10 @@ PP.Tools.prototype.update = function (dt) {
 
   this.forceN = this.force;
   p.lx = p.x; p.ly = p.y;
+  // released (or lifted) this step: the dents, drag and fold relax instead of snapping back
+  if (!ph.contacts.length && prev.length) { ph.pinch = prevPinch; ph.release(prev); ph.pinch = null; }
+  else if (ph.contacts.length) { ph.ghosts.length = 0; ph.pinchGhost = null; }
+  ph.stepGhosts(dt);
 };
 
 PP.Tools.prototype.prim = function (ab, type, mat, col) {

@@ -127,7 +127,7 @@ PP.main = {
     const C = W.cam;
     const camMoved = C.x !== pc.x || C.y !== pc.y || C.zoom !== pc.z || R.canvas.clientWidth !== pc.w || R.canvas.clientHeight !== pc.h;
     pc.x = C.x; pc.y = C.y; pc.z = C.zoom; pc.w = R.canvas.clientWidth; pc.h = R.canvas.clientHeight;
-    const active = frozen || camMoved || W.phys.contacts.length > 0 || W.parts.moving || R.drops.length > 0 || R.brushes.length > 0 ||
+    const active = frozen || camMoved || W.phys.contacts.length > 0 || W.phys.ghosts.length > 0 || W.parts.moving || R.drops.length > 0 || R.brushes.length > 0 ||
       W.cam.shake > 0 || W.time < (W.activeUntil || 0) || W.tools.ptr.down;
     // camera shake on flinch
     const sh = W.cam.shake > 0 ? W.cam.shake * 0.6 : 0;

@@ -13,6 +13,38 @@
 PP.Phys = function () {
   this.nu = 0.48;
   this.contacts = [];
+  /* Squeezing beyond small-strain elasticity (deformation only: blanching and cavity loads use the live contacts):
+     - pinch fold: pads that grip and drag the skin toward each other shorten the surface between them by the
+       approach delta; the stiff surface layer cannot shorten that much, so the excess rises as a fold. Arc length of a
+       cos^2 bump of span L gives h = (2/pi) sqrt(L delta); 0.66 of that (the rest is in-plane compression of soft
+       tissue) is a calibrated estimate.
+     - pile-up: nearly incompressible tissue displaced by a soft pad rises in a low rim around it (~12% of the dent,
+       calibrated estimate).
+     - viscoelastic recovery: on release, loads become decaying ghosts; about half the deformation returns at once and
+       the rest creeps back (tau ~1.5 s, calibrated), the Cutometer split into immediate retraction and slow recovery. */
+  this.pinch = null; this.ghosts = []; this.pinchGhost = null; this.ghostT = 0;
+  this.ghostK = function () { const t = this.ghostT; return 0.5 * Math.exp(-t / 0.08) + 0.5 * Math.exp(-t / 1.5); };
+  this.release = function (prev) {
+    this.ghosts = prev.slice(0, 32).map((c) => Object.assign({}, c));
+    this.pinchGhost = this.pinch ? Object.assign({}, this.pinch) : null;
+    this.ghostT = 0;
+  };
+  this.stepGhosts = function (dt) {
+    if (!this.ghosts.length && !this.pinchGhost) return;
+    this.ghostT += dt;
+    if (this.ghostK() < 0.02) { this.ghosts.length = 0; this.pinchGhost = null; }
+  };
+  this.clearGhosts = function () { this.ghosts.length = 0; this.pinchGhost = null; this.pinch = null; };
+  // the fold currently shaping the skin (live pinch, or a relaxing one) with its scale
+  this.foldNow = function () { return this.pinch ? { P: this.pinch, k: 1 } : this.pinchGhost ? { P: this.pinchGhost, k: this.ghostK() } : null; };
+  this.foldW = function (x, y, P) {
+    const dx = x - P.mx, dy = y - P.my, s = dx * P.ux + dy * P.uy, q = -dx * P.uy + dy * P.ux;
+    if (Math.abs(s) >= P.Ls * 0.5) return 0;
+    const c = Math.cos((Math.PI * s) / P.Ls);
+    return P.h * c * c * Math.exp(-(q * q) / (0.3 * P.wp * P.wp));
+  };
+  // distance used for a pad's dent: pads are flagged with pad=1
+  this.pileUp = function (c, r) { const a = c.aV || c.a; return c.pad ? 0.12 * this.dentW(c.fn, a, 0) * -1 * Math.exp(-Math.pow((r - 1.25 * a) / (0.45 * a), 2)) : 0; };
   this.setArea = function (A) {
     this.A = A;
     this.Ek = A.E;                // kPa
@@ -77,7 +109,12 @@ PP.Phys = function () {
       } else if (c.fn) w += this.dentW(c.fn, c.a, r);
       if (c.suction) w += -this.dentW((c.suction * 1e-3) * Math.PI * c.a * c.a, c.a, r) * 0.5; // dome up (Cutometer-calibrated)
     }
-    if (this.contacts.some((c) => c.qx || c.qy)) w += -this.Heff * this.strain(x, y).div;
+    let th = 0;
+    if (this.contacts.some((c) => c.qx || c.qy)) th = -this.Heff * this.strain(x, y).div;
+    w += th;
+    const F = this.foldNow();
+    if (F) w += Math.max(0, F.k * this.foldW(x, y, F.P) - Math.max(0, th));
+    for (const c of this.contacts) if (c.pad && c.fn) w += this.pileUp(c, Math.hypot(x - c.x, y - c.y));
     return w;
   };
 

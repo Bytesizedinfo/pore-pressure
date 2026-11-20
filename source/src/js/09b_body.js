@@ -33,7 +33,7 @@ uniform highp sampler2DShadow uShadow;
 uniform float uTile, uHmm, uDetK, uYTop;
 uniform vec3 uTone, uToneA, uVM, uVH, uVS;
 uniform vec3 uSH[9]; uniform float uYaw, uExposure, uRing; uniform vec3 uKey;
-uniform vec4 uAP[6]; uniform vec4 uAT[6]; uniform vec4 uAB[6]; uniform vec4 uAN[6];
+uniform vec4 uAP[16]; uniform vec4 uAT[16]; uniform vec4 uAB[16]; uniform vec4 uAN[16];
 uniform int uNA, uHover, uCur; uniform float uShowAll, uBloodOn;
 uniform vec3 uNose, uMouth, uEyeL, uEyeR, uHead;
 uniform int uIsEye;
@@ -151,7 +151,7 @@ void main(){
   // ---- blemishes of every area at their anchors (+ the live physiology/film of the current area)
   float hemL=0.0, dark=0.0, headM=0.0, crater=0.0, hema=0.0, outline=0.0, gloss=0.0; vec3 headC=vec3(0.9);
   vec3 gL = vec3(0.0); vec4 ph0=vec4(1.0,0.0,0.0,0.0), film=vec4(0.0);
-  for(int a=0;a<6;a++){
+  for(int a=0;a<16;a++){
     if(a>=uNA) break;
     vec3 dd = p-uAP[a].xyz; float hs = uAP[a].w;
     float w = dot(dd, uAN[a].xyz);
@@ -269,12 +269,13 @@ PP.Body = function (R, W) {
   this.tgt = { p: [0, 712, 80], yaw: 0, pitch: 0.06, dist: 800 };
   this.tw = null;           // scripted camera move {a, b, t, dur, ease}
   this.hover = -1; this.showAll = 0; this.dirty = true;
-  this.lesData = new Float32Array(3 * 384 * 4);
-  this.lesTex = G.tex(3, 384, { ifmt: gl.RGBA32F, fmt: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST });
+  this.lesData = new Float32Array(3 * 1024 * 4);
+  this.lesTex = G.tex(3, 1024, { ifmt: gl.RGBA32F, fmt: gl.RGBA, type: gl.FLOAT, filter: gl.NEAREST });
+  this.spotN = 0; this.preview = null;
   this._lesT = -1;
   this.ptrs = new Map();
   this.u9 = new Float32Array(9);
-  this.ua = { p: new Float32Array(24), t: new Float32Array(24), b: new Float32Array(24), n: new Float32Array(24) };
+  this.ua = { p: new Float32Array(64), t: new Float32Array(64), b: new Float32Array(64), n: new Float32Array(64) };
 };
 
 PP.Body.prototype.load = function () {
@@ -295,7 +296,7 @@ PP.Body.prototype.load = function () {
     const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     this.nEye = d.eyeCount; this.eyeStart = d.eyeStart; this.nBody = d.eyeStart;
-    this.pos = pos; this.idx = idx; this.meta = d; this.face = face;
+    this.pos = pos; this.nrm = nrm; this.idx = idx; this.meta = d; this.face = face;
     this.anchors = {};
     for (const [id, a] of Object.entries(d.anchors)) if (PP.AREAS[id]) this.anchors[id] = a;
     this.order = Object.keys(this.anchors);
@@ -355,9 +356,17 @@ PP.Body.prototype.viewOf = function (a) {   // camera state looking straight at 
 };
 PP.Body.prototype.overview = function (id) {
   const M = this.meta, hc = M.headCenter;
+  const A = PP.AREAS[id], a = this.anchors[id];
+  if (A && A.spot && a) {
+    const yawN = Math.atan2(a.n[0], a.n[2]);
+    if (A.region === 'upperback') return { p: [0, 590, 10], yaw: Math.PI + PP.clamp(Math.atan2(-a.n[0], -a.n[2]), -0.8, 0.8) * 0.6, pitch: 0.12, dist: this.distH(430) };
+    if (A.region === 'chest' || A.region === 'shoulder') return { p: [0, 575, 50], yaw: PP.clamp(yawN, -1.1, 1.1) * 0.7, pitch: 0.15, dist: this.distH(430) };
+    if (A.region === 'neck') return a.n[2] < -0.3 ? { p: [0, 650, 20], yaw: Math.PI, pitch: 0.1, dist: this.distH(340) } : { p: [0, 650, 70], yaw: PP.clamp(yawN, -0.8, 0.8) * 0.6, pitch: -0.05, dist: this.distH(340) };
+    if (A.region === 'scalp') return { p: [0, hc[1] + 10, hc[2]], yaw: yawN * 0.8, pitch: 0.6, dist: this.distH(300) };
+    return { p: [0, hc[1] - 8, hc[2] + 8], yaw: PP.clamp(yawN, -1.3, 1.3) * 0.75, pitch: 0.05, dist: this.distH(330) };
+  }
   if (id === 'back') return { p: [0, 610, 20], yaw: Math.PI, pitch: 0.12, dist: this.distH(430) };
   if (id === 'scalp') return { p: [0, hc[1] + 10, hc[2]], yaw: 0.35, pitch: 0.72, dist: this.distH(300) };
-  const a = this.anchors[id];
   const yaw = a ? PP.clamp(Math.atan2(a.n[0], a.n[2]), -0.7, 0.7) * 0.75 : 0;
   return { p: [0, hc[1] - 8, hc[2] + 8], yaw, pitch: 0.05, dist: this.distH(330) };
 };
@@ -412,7 +421,13 @@ PP.Body.prototype.ray = function (sx, sy) {
 };
 PP.Body.prototype.pick = function (sx, sy) {
   if (!this.ready || !this.basis) return null;
-  const { o, d } = this.ray(sx, sy), P = this.pos, I = this.idx;
+  const { o, d } = this.ray(sx, sy);
+  return this.raycast(o, d);
+};
+PP.Body.prototype.raycast = function (o, d) {
+  if (!this.ready) return null;
+  d = PP.M4.norm(d);
+  const P = this.pos, I = this.idx;
   let best = Infinity;
   for (let k = 0; k < this.nBody; k += 3) {
     const a = I[k] * 3, b = I[k + 1] * 3, c = I[k + 2] * 3;
@@ -432,15 +447,112 @@ PP.Body.prototype.pick = function (sx, sy) {
   const p = PP.M4.add(o, PP.M4.scale(d, best));
   return { p, area: this.areaAt(p) };
 };
-PP.Body.prototype.areaAt = function (p) {
+PP.Body.prototype.areaAt = function (p, skip) {
   const M = PP.M4; let best = null, bs = 1;
   for (const id of this.order) {
+    if (id === skip) continue;
     const a = this.anchors[id], hs = PP.AREAS[id].size / 2, dd = M.sub(p, a.p);
     if (Math.abs(M.dot(dd, a.n)) > 32) continue;
     const s = Math.max(Math.abs(M.dot(dd, a.t)), Math.abs(M.dot(dd, a.b))) / hs;
     if (s < bs) { bs = s; best = id; }
   }
   return best;
+};
+
+/* ---------------- close-ups anywhere ---------------- */
+// smoothed surface normal at a mesh point (vertex normals within ~6 mm)
+PP.Body.prototype.normalAt = function (p) {
+  const P = this.pos, N = this.nrm; let nx = 0, ny = 0, nz = 0;
+  for (let i = 0, n = P.length / 3; i < n; i++) {
+    const dx = P[i * 3] - p[0], dy = P[i * 3 + 1] - p[1], dz = P[i * 3 + 2] - p[2], d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > 144) continue;
+    const w = Math.exp(-d2 / 36); nx += N[i * 3] * w; ny += N[i * 3 + 1] * w; nz += N[i * 3 + 2] * w;
+  }
+  return PP.M4.norm([nx, ny, nz]);
+};
+// which part of the body a point is on (landmarks from the model); eyes and lips get no close-up
+PP.Body.prototype.regionAt = function (p, n) {
+  const M = this.meta, hc = M.headCenter, eL = M.eyes[0], eR = M.eyes[1], mo = M.mouth;
+  const D = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const dEye = Math.min(D(p, eL), D(p, eR));
+  if (dEye < 18) return { bad: 'eye', dEye };
+  if (Math.abs(p[0]) < 24 && p[1] > mo[1] - 9 && p[1] < mo[1] + 8 && p[2] > mo[2] - 18) return { bad: 'lips', dEye };
+  const chinY = 611, neckBot = 572;
+  const d = [p[0] - hc[0], p[1] - hc[1], p[2] - hc[2]];
+  const az = Math.abs(Math.atan2(d[0], d[2])), el = Math.atan2(d[1], Math.hypot(d[0], d[2]));
+  const sm = (a, b, x) => { const t = PP.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const elH = 0.92 - 0.45 * sm(0, 1.57, az) - 1.0 * sm(1.57, 3.14, az);
+  const ear = Math.abs(p[0]) > 62 && p[1] > eL[1] - 48 && p[1] < eL[1] + 20 && p[2] > hc[2] - 50 && p[2] < hc[2] + 25;
+  let key, name = null;
+  if (ear) key = 'ear';
+  else if (p[1] > chinY && n[1] < -0.55 && p[1] < mo[1]) { key = 'neck'; name = 'Under the chin'; }
+  else if (p[1] > chinY && el > elH + 0.03) key = 'scalp';
+  else if (p[1] > chinY && n[2] < -0.3) { key = 'neck'; name = 'Back of the neck'; }
+  else if (p[1] > chinY) {
+    if (p[1] > eL[1] + 10 && Math.abs(p[0]) < 42) key = 'forehead';
+    else if (Math.abs(p[0]) > 44 && p[1] > eL[1] - 20) key = 'temple';
+    else if (p[1] < mo[1] + 6) key = Math.abs(p[0]) < 22 ? 'chin' : 'jaw';
+    else key = 'cheek';
+  } else if (p[1] > neckBot && Math.abs(p[0]) < 62) { key = 'neck'; if (n[2] < -0.3) name = 'Back of the neck'; }
+  else if (n[2] < -0.3) key = 'upperback';
+  else if (Math.abs(p[0]) > 95 || n[1] > 0.6) key = 'shoulder';
+  else key = 'chest';
+  if (!name) {
+    const t = PP.SPOTS[key].name, side = p[0] > 22 ? 'Left ' : p[0] < -22 ? 'Right ' : '';
+    name = t[0] === t[0].toUpperCase() ? t : side ? side + t : t[0].toUpperCase() + t.slice(1);
+  }
+  return { key, name, dEye };
+};
+// the close-up a hit point would open (frame, size, region) without creating it
+PP.Body.prototype.spotFor = function (hit) {
+  const M = PP.M4, p = hit.p, n = this.normalAt(p), r = this.regionAt(p, n);
+  if (r.bad) return r;
+  const T = PP.SPOTS[r.key];
+  let t = M.cross([0, 1, 0], n); if (Math.hypot(t[0], t[1], t[2]) < 0.2) t = M.cross([0, 0, 1], n);
+  t = M.norm(t); const b = M.cross(n, t);
+  // keep the eye out of the patch where possible
+  const size = r.key === 'ear' ? T.size : PP.clamp(Math.min(T.size, 2 * (r.dEye - 8)), 28, T.size);
+  return { key: r.key, name: r.name, p: p.slice(), n, t, b, size, T };
+};
+PP.Body.prototype.makeSpot = function (f) {
+  if (!f || f.bad) return null;
+  const W = this.W, UI = PP.main.UI, M = PP.M4;
+  // at most 9 close-ups: recycle the oldest one you're not in
+  const spots = this.order.filter((id) => PP.AREAS[id] && PP.AREAS[id].spot);
+  if (spots.length >= 9) { const old = spots.find((id) => id !== W.areaId); if (old) { UI.toast('', 'Close-up recycled', PP.AREAS[old].name + ' was forgotten to make room (9 close-ups at a time).'); this.dropSpot(old); } }
+  const id = 'spot' + (++this.spotN), T = f.T, base = PP.AREAS[T.base];
+  let name = f.name; const same = Object.values(PP.AREAS).filter((A) => A.spot && A.name.replace(/ \d+$/, '') === name).length;
+  if (same) name += ' ' + (same + 1);
+  // gravity in the patch frame: reclined in the clinic chair, or prone for the back
+  const g = f.n[2] < -0.3 ? [0, 0, 1] : M.norm([0, -0.9, -0.42]);
+  PP.AREAS[id] = Object.assign({}, base, { name, size: f.size, view: (T.view * f.size) / T.size, mix: T.mix, base: T.base, spot: true, region: f.key,
+    grav: [M.dot(g, f.t), M.dot(g, f.b), M.dot(g, f.n)], rstl: T.rstl == null ? base.rstl : T.rstl });
+  this.anchors[id] = { p: f.p, n: f.n, t: f.t, b: f.b };
+  this.order.push(id);
+  // its blemishes: never inside another area's patch, never over the eyes or lips
+  const eyes = this.meta.eyes, mo = this.meta.mouth;
+  const accept = (x, y, R) => {
+    const q = M.add(M.add(f.p, M.scale(f.t, x)), M.scale(f.b, y));
+    if (this.areaAt(q, id)) return false;
+    for (const e of eyes) if (Math.hypot(q[0] - e[0], q[1] - e[1], q[2] - e[2]) < 16 + R) return false;
+    return !(Math.abs(q[0]) < 26 && Math.abs(q[1] - mo[1]) < 10 + R && q[2] > mo[2] - 20);
+  };
+  let h = 2166136261; for (const c of id + name) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  const seed = (W.seed ^ h) >>> 0;
+  W.areaStates = W.areaStates || {};
+  W.areaStates[id] = { seed, lesions: W.genLesions(PP.AREAS[id], PP.rng(seed), accept), gpu: null };
+  UI.addSpotOption(id);
+  this._lesT = -1; this.dirty = true;
+  return id;
+};
+PP.Body.prototype.dropSpot = function (id) {
+  const W = this.W, st = W.areaStates && W.areaStates[id];
+  if (st && st.gpu) for (const k of ['physA', 'physB', 'film']) this.G.freeTarget(st.gpu[k]);
+  if (W.areaStates) delete W.areaStates[id];
+  delete PP.AREAS[id]; delete this.anchors[id];
+  this.order = this.order.filter((x) => x !== id);
+  PP.main.UI.removeSpotOption(id);
+  this._lesT = -1;
 };
 
 /* ---------------- blemish data for every area ---------------- */
@@ -477,7 +589,7 @@ PP.Body.prototype.uploadLesions = function () {
   });
   const gl = this.gl;
   gl.bindTexture(gl.TEXTURE_2D, this.lesTex.t);
-  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 3, 384, gl.RGBA, gl.FLOAT, d);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 3, 1024, gl.RGBA, gl.FLOAT, d);
 };
 
 /* ---------------- draw ---------------- */
@@ -519,7 +631,16 @@ PP.Body.prototype.render = function () {
   gl.uniform3fv(S.u.uSH, R.sh); gl.uniform1f(S.u.uYaw, W.envYaw); gl.uniform1f(S.u.uExposure, W.exposure); gl.uniform1f(S.u.uRing, W.S.ring ? 1 : 0);
   gl.uniform3fv(S.u.uKey, W.keyDir);
   gl.uniform4fv(S.u.uAP, ua.p); gl.uniform4fv(S.u.uAT, ua.t); gl.uniform4fv(S.u.uAB, ua.b); gl.uniform4fv(S.u.uAN, ua.n);
-  gl.uniform1i(S.u.uNA, this.order.length); gl.uniform1i(S.u.uHover, this.hover); gl.uniform1i(S.u.uCur, live ? cur : -1);
+  // hovering skin that isn't part of an area yet: outline where its close-up would be (an extra, empty slot)
+  let nA = this.order.length, hov = this.hover;
+  const pv = this.preview;
+  if (pv && nA < 16) {
+    ua.p.set([pv.p[0], pv.p[1], pv.p[2], pv.size / 2], nA * 4); ua.t.set([pv.t[0], pv.t[1], pv.t[2], 0], nA * 4);
+    ua.b.set([pv.b[0], pv.b[1], pv.b[2], 0], nA * 4); ua.n.set([pv.n[0], pv.n[1], pv.n[2], 0], nA * 4);
+    hov = nA; nA++;
+    gl.uniform4fv(S.u.uAP, ua.p); gl.uniform4fv(S.u.uAT, ua.t); gl.uniform4fv(S.u.uAB, ua.b); gl.uniform4fv(S.u.uAN, ua.n);
+  }
+  gl.uniform1i(S.u.uNA, nA); gl.uniform1i(S.u.uHover, hov); gl.uniform1i(S.u.uCur, live ? cur : -1);
   gl.uniform1f(S.u.uShowAll, this.showAll); gl.uniform1f(S.u.uBloodOn, W.S.blood ? 1 : 0);
   const M = this.meta;
   gl.uniform3fv(S.u.uNose, M.nose); gl.uniform3fv(S.u.uMouth, M.mouth); gl.uniform3fv(S.u.uEyeL, M.eyes[0]); gl.uniform3fv(S.u.uEyeR, M.eyes[1]); gl.uniform3fv(S.u.uHead, M.headCenter);
@@ -579,7 +700,7 @@ PP.Body.prototype.dive = function (id) {
   const a = this.anchors[id], v = this.viewOf(a);
   this.diveId = id; this.areaReady = false;
   this.tween({ p: a.p.slice(), yaw: v.yaw, pitch: v.pitch, dist: this.distW(PP.AREAS[id].size) }, 0.8, 'inout');
-  this.mode = 'diving'; this.hover = -1; PP.main.UI.bodyLabel(null);
+  this.mode = 'diving'; this.hover = -1; this.preview = null; PP.main.UI.bodyLabel(null);
   const go = id === this.W.areaId ? Promise.resolve() : PP.main.switchArea(id);
   go.then(() => { this.areaReady = true; this._lesT = -1; });
 };
@@ -634,10 +755,11 @@ PP.Body.prototype.down = function (e) {
   this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (this.ptrs.size === 2) {
     const [a, b] = [...this.ptrs.values()];
-    this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), dist0: this.tgt.dist };
+    this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), dist0: this.tgt.dist, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
     this.drag = null; return;
   }
-  this.drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: 0, pan: e.button === 1 || e.button === 2 || e.shiftKey || PP.main.UI.space || this.W.tools.id === 'move' && e.altKey };
+  // left-drag moves the body; right/middle-drag or Shift-drag turns it
+  this.drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: 0, rot: (e.button === 1 || e.button === 2 || e.shiftKey) && !PP.main.UI.space };
   if (this.interactive() && this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
 };
 PP.Body.prototype.move = function (e) {
@@ -646,27 +768,33 @@ PP.Body.prototype.move = function (e) {
   if (this.pinch && this.ptrs.size === 2) {
     const [a, b] = [...this.ptrs.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
-    this.tgt.dist = PP.clamp(this.pinch.dist0 * (this.pinch.d0 / Math.max(d, 1)), this.distH(55), this.distH(1100));
-    this.checkDive((a.x + b.x) / 2, (a.y + b.y) / 2);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    // two fingers: pinch zooms, moving them together turns the body
+    this.turn(mx - this.pinch.mx, my - this.pinch.my); this.pinch.mx = mx; this.pinch.my = my;
+    this.tgt.dist = PP.clamp(this.pinch.dist0 * (this.pinch.d0 / Math.max(d, 1)), this.distH(30), this.distH(1100));
+    this.checkDive(mx, my);
     return;
   }
   const D = this.drag;
   if (D) {
     const dx = e.clientX - D.x, dy = e.clientY - D.y; D.x = e.clientX; D.y = e.clientY; D.moved += Math.abs(dx) + Math.abs(dy);
     const t = this.tgt;
-    if (D.pan) {
+    if (!D.rot) {
       const r = this.R.canvas.getBoundingClientRect(), mmpx = this.widthAt(t.dist) / r.width, B = this.basis, M = PP.M4;
       t.p = M.add(t.p, M.add(M.scale(B.x, -dx * mmpx), M.scale(B.y, dy * mmpx)));
       const bb = this.meta.bbox;
       for (let k = 0; k < 3; k++) t.p[k] = PP.clamp(t.p[k], bb[0][k] - 60, bb[1][k] + 60);
-    } else {
-      t.yaw -= dx * 0.0062; t.pitch = PP.clamp(t.pitch + dy * 0.0055, -0.45, 1.3);
-    }
+    } else this.turn(dx, dy);
     this.R.canvas.classList.add('grabbing');
     if (this.hover >= 0) { this.hover = -1; PP.main.UI.bodyLabel(null); }
     return;
   }
   this.hoverAt(e.clientX, e.clientY);
+};
+PP.Body.prototype.turn = function (dx, dy) {
+  if (!this.interactive()) return;
+  if (this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
+  this.tgt.yaw -= dx * 0.0062; this.tgt.pitch = PP.clamp(this.tgt.pitch + dy * 0.0055, -0.45, 1.3);
 };
 PP.Body.prototype.up = function (e) {
   this.ptrs.delete(e.pointerId);
@@ -676,6 +804,7 @@ PP.Body.prototype.up = function (e) {
   if (D && D.moved < 6 && this.interactive()) {
     const h = this.pick(e.clientX, e.clientY);
     if (h && h.area) this.dive(h.area);
+    else if (h) { const id = this.makeSpot(this.spotFor(h)); if (id) this.dive(id); }
   }
 };
 PP.Body.prototype.hoverAt = function (sx, sy) {
@@ -684,8 +813,17 @@ PP.Body.prototype.hoverAt = function (sx, sy) {
   this._hovT = now;
   const h = this.pick(sx, sy), id = h && h.area;
   const idx = id ? this.order.indexOf(id) : -1;
-  if (idx !== this.hover) { this.hover = idx; this.dirty = true; }
-  PP.main.UI.bodyLabel(id ? { id, x: sx, y: sy, n: this.areaLesions(id).length } : null);
+  const UI = PP.main.UI;
+  let pv = null;
+  if (id) { const n = this.areaLesions(id).length; UI.bodyLabel({ x: sx, y: sy, title: PP.AREAS[id].name, sub: n + ' blemish' + (n === 1 ? '' : 'es') + ' · click to zoom in' }); }
+  else if (h) {
+    const f = this.spotFor(h);
+    if (f.bad) UI.bodyLabel({ x: sx, y: sy, title: f.bad === 'eye' ? 'Eye' : 'Lips', sub: 'no close-up here' });
+    else { pv = f; UI.bodyLabel({ x: sx, y: sy, title: f.name, sub: 'click or zoom in for a close-up' }); }
+  } else UI.bodyLabel(null);
+  const P0 = this.preview;
+  if (idx !== this.hover || !!pv !== !!P0 || (pv && P0 && Math.hypot(pv.p[0] - P0.p[0], pv.p[1] - P0.p[1], pv.p[2] - P0.p[2]) > 0.5)) this.dirty = true;
+  this.hover = idx; this.preview = pv;
 };
 // the scroll gesture that brought us out of the macro view must pause (250 ms between input events)
 // before scrolling out moves the face camera, so a flick or trackpad momentum stops at the face
@@ -701,7 +839,7 @@ PP.Body.prototype.zoomAt = function (sx, sy, k) {
   if (!this.interactive()) return;
   if (this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
   const t = this.tgt, M = PP.M4;
-  const nd = PP.clamp(t.dist * k, this.distH(55), this.distH(1100));
+  const nd = PP.clamp(t.dist * k, this.distH(30), this.distH(1100));
   const f = 1 - nd / t.dist;
   if (f > 0) { const h = this.pick(sx, sy); if (h) t.p = M.lerp3(t.p, h.p, f); }
   else if (f < 0) { const ov = this.overview(this.W.areaId); t.p = M.lerp3(t.p, ov.p, Math.min(1, -f * 0.8)); }
@@ -710,7 +848,10 @@ PP.Body.prototype.zoomAt = function (sx, sy, k) {
 };
 // zoomed in far enough over a marked area: dive into its macro patch
 PP.Body.prototype.checkDive = function (sx, sy) {
-  const h = this.pick(sx, sy); if (!h || !h.area) return;
+  const h = this.pick(sx, sy); if (!h) return;
   const w = Math.min(this.widthAt(this.tgt.dist), this.widthAt(this.tgt.dist) / this.aspect());
-  if (w < PP.AREAS[h.area].size * 1.35) this.dive(h.area);
+  if (h.area) { if (w < PP.AREAS[h.area].size * 1.35) this.dive(h.area); return; }
+  // anywhere else on the skin: open a close-up there once the view is about its size
+  const f = this.spotFor(h);
+  if (!f.bad && w < f.size * 1.35) { const id = this.makeSpot(f); if (id) this.dive(id); }
 };

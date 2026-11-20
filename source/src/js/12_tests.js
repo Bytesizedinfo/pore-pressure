@@ -10,7 +10,7 @@ PP.Tests.prototype.setup = async function (area, list, opt = {}) {
   if (W.areaId !== area) await PP.main.switchArea(area);
   W.S.blood = opt.blood !== false; W.S.spurt = 1; W.S.ooze = 1; W.S.pain = false; W.S.shield = false; W.S.lens = true; W.S.bloodAmt = 1;
   W.rng = PP.rng(1234); W.ctx.rng = W.rng;
-  W.parts.clear(); W.wounds.reset(); W.decals.reset(); W.render.setupWorld();
+  W.parts.clear(); W.wounds.reset(); W.decals.reset(); W.render.setupWorld(); W.phys.clearGhosts(); W.phys.contacts.length = 0;
   W.lesions = []; W.clock = 0; W.ctx.clock = 0; W.stats = { pops: 0, vol: 0, perfect: 0, deep: 0, flinch: 0, bruise: 0 };
   W.tools.release(); W.tools.ptr.down = false; W.tools.spread = { fingers: 4.6, swabs: 3.0 }; W.tools.angle = 0; W.tools.wet = 0; W.painLevel = 0;
   const out = list.map(([t, x, y, d]) => W.addLesion(t, x, y, d));
@@ -202,6 +202,36 @@ PP.Tests.prototype.all = async function () {
     T.select('fingers'); UI.space = true; const dSpace = dragPan(); UI.space = false;
     this.ok('move_space_pan', dMove > 1 && dSpace > 1 && !T.ptr.down && L.Pmax < 1 && !L.events.includes('pop'), { dMove: +dMove.toFixed(2), dSpace: +dSpace.toFixed(2), Pmax: +L.Pmax.toFixed(2), events: L.events });
   }
+  // 15b. squeezing: the skin between the pads folds up, pads travel inward and spread with force,
+  //      and on release the skin springs back part at once, the rest over seconds
+  {
+    await this.setup('cheek', [], { zoom: 2 });
+    T.select('fingers'); T.spread.fingers = 4.6; T.angle = 0; T.ptr.x = 0; T.ptr.y = 0; T.down(0, 0, {});
+    this.step(0.15); const aLow = T.padA;
+    this.step(1.6); const aHigh = T.padA, travel = T.padTravel;
+    W.buildHeightGrid(); const ridge = W.visH(0, 0), held = W.visH(-4.6, 0);
+    T.up(); this.step(0.1); W.buildHeightGrid(); const at01 = W.visH(-4.6, 0), ridge01 = W.visH(0, 0);
+    this.step(5); W.buildHeightGrid(); const at5 = W.visH(-4.6, 0);
+    // crest above the pad contacts 2-5 mm, and above undeformed skin
+    this.ok('squeeze_fold', ridge - held > 2 && ridge - held < 5 && ridge > 0.5 && travel > 0.3 && aHigh > aLow + 0.1, { ridge: +ridge.toFixed(2), travel: +travel.toFixed(2), aLow: +aLow.toFixed(2), aHigh: +aHigh.toFixed(2) });
+    this.ok('squeeze_recovery', held < -0.2 && at01 / held > 0.3 && at01 / held < 0.8 && Math.abs(at5 / held) < 0.1 && ridge01 < ridge, { held: +held.toFixed(3), at01: +at01.toFixed(3), at5: +at5.toFixed(4), ridge01: +ridge01.toFixed(2) });
+  }
+  // 15c. smart drag: clear skin pans, a blemish gets the instrument, blades cut anywhere, holding still presses
+  {
+    [L] = await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1 });
+    const cv = document.getElementById('gl'), r = cv.getBoundingClientRect(), UI = PP.main.UI;
+    const ev = (type, x, y, btn) => cv.dispatchEvent(new PointerEvent(type, { clientX: r.left + x, clientY: r.top + y, button: btn || 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 9, pointerType: 'mouse', bubbles: true }));
+    const at = (wx, wy) => [(0.5 + (wx - W.cam.x) / W.cam.vw) * r.width, (0.5 - (wy - W.cam.y) / W.cam.vh) * r.height];
+    const drag = (wx, wy) => { const [x, y] = at(wx, wy), x0 = W.cam.x; ev('pointerdown', x, y); for (let i = 1; i <= 6; i++) { ev('pointermove', x - i * 15, y); W.step(this.dt); } const down = T.ptr.down; ev('pointerup', x - 90, y); this.step(0.1); return { d: W.cam.x - x0, down }; };
+    T.select('fingers');
+    const clear = drag(-9, 4.5); W.cam.x = W.cam.tx = 0; W.cam.y = W.cam.ty = 0; W.cam.vxp = W.cam.vyp = 0;
+    const onLes = drag(0, 0); const pm = L.Pmax; W.cam.x = W.cam.tx = 0; W.cam.vxp = 0;
+    T.select('blade15'); const nCut0 = W.wounds.cuts.length; const blade = drag(-9, 4.5); const cut = W.wounds.cuts.length > nCut0; W.cam.x = W.cam.tx = 0; W.cam.vxp = 0;
+    T.select('fingers'); const [hx, hy] = at(-9, -4.5); const pend = UI.canPanFrom(-9, -4.5, 'fingers'); ev('pointerdown', hx, hy); await new Promise((res) => setTimeout(res, 320)); const held = T.ptr.down; ev('pointerup', hx, hy); this.step(0.05);
+    this.ok('smart_drag', clear.d > 1 && !clear.down && Math.abs(onLes.d) < 0.01 && onLes.down && pm > 1 && Math.abs(blade.d) < 0.01 && cut && pend && held,
+      { clearPan: +clear.d.toFixed(2), lesionPan: +onLes.d.toFixed(2), Pmax: +pm.toFixed(1), bladePan: +blade.d.toFixed(2), cut, viaPending: pend, holdPress: held });
+    UI.cancelPending();
+  }
   // 16. zoom out to the face, dive into the nose, come back into the cheek: every area keeps its state
   {
     [L] = await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 0.4 });
@@ -217,6 +247,42 @@ PP.Tests.prototype.all = async function () {
     const noseKept = W.areaStates.nose && W.areaStates.nose.lesions[0] === noseL && noseL.popped;
     this.ok('body_roundtrip', m1 === 'body' && inNose && nNose > 0 && W.areaId === 'cheek' && back === L && L.events.includes('pop') && noseKept && W.render.physA,
       { m1, inNose, nNose, area: W.areaId, same: back === L, popped: L.events.includes('pop'), noseKept: !!noseKept });
+  }
+
+  // 17. face view: left-drag moves the body, right-drag turns it
+  {
+    const B = PP.main.B; await B.load();
+    await B.jump(B.overview('cheek'));
+    const cv = document.getElementById('gl'), r = cv.getBoundingClientRect();
+    const ev = (type, x, y, btn) => cv.dispatchEvent(new PointerEvent(type, { clientX: r.left + x, clientY: r.top + y, button: btn, buttons: type === 'pointerup' ? 0 : 1, pointerId: 11, pointerType: 'mouse', bubbles: true }));
+    const go = (btn) => { ev('pointerdown', r.width / 2, r.height / 2, btn); for (let i = 1; i <= 6; i++) ev('pointermove', r.width / 2 + i * 12, r.height / 2, btn); ev('pointerup', r.width / 2 + 72, r.height / 2, btn); };
+    const p0 = B.tgt.p.slice(), y0 = B.tgt.yaw; go(0);
+    const moved = Math.hypot(B.tgt.p[0] - p0[0], B.tgt.p[1] - p0[1], B.tgt.p[2] - p0[2]), yaw1 = B.tgt.yaw;
+    go(2); const yaw2 = B.tgt.yaw;
+    this.ok('face_drag', moved > 5 && Math.abs(yaw1 - y0) < 1e-6 && Math.abs(yaw2 - yaw1) > 0.2, { moved: +moved.toFixed(1), yawAfterLeft: +(yaw1 - y0).toFixed(3), yawAfterRight: +(yaw2 - yaw1).toFixed(3) });
+    B.exitToMacro();
+  }
+
+  // 18. close-up anywhere: a point on the neck opens a "Neck" patch with neck-type blemishes that keeps its
+  //     state across trips; the eye gets no close-up
+  {
+    const B = PP.main.B; await B.load();
+    await this.setup('cheek', [], { zoom: 0.4 }); W.ensureAreas();
+    const run = async () => { for (let i = 0; i < 3000 && B.mode !== 'macro' && B.mode !== 'body'; i++) { B.update(1 / 30); await new Promise((res) => setTimeout(res, 2)); } };
+    const hit = B.raycast([0, 592, 600], [0, 0, -1]);
+    const f = hit && B.spotFor(hit), id = f && B.makeSpot(f);
+    const A = id && PP.AREAS[id], les = id ? W.areaStates[id].lesions : [];
+    const typesOk = les.length > 0 && les.every((L) => PP.SPOTS.neck.mix.some(([t]) => t === L.type));
+    await B.jump(B.overview(id)); B.dive(id); await run();
+    const inSpot = W.areaId === id && B.mode === 'macro' && W.lesions.length === les.length;
+    const keep = W.lesions[0]; if (keep) keep.popped = true;
+    await B.enter(); await run(); B.dive('cheek'); await run(); const inCheek = W.areaId === 'cheek';
+    await B.enter(); await run(); B.dive(id); await run();
+    const kept = W.areaId === id && W.lesions[0] === keep && keep && keep.popped;
+    const eyeHit = B.raycast([B.meta.eyes[0][0], B.meta.eyes[0][1], 600], [0, 0, -1]), eye = eyeHit && B.spotFor(eyeHit);
+    const opt = !!document.querySelector('#area option[value="' + id + '"]');
+    this.ok('spot_anywhere', A && A.name === 'Neck' && typesOk && inSpot && inCheek && kept && eye && eye.bad === 'eye' && opt,
+      { name: A && A.name, n: les.length, typesOk, inSpot, inCheek, kept: !!kept, eye: eye && eye.bad, menu: opt, size: A && A.size });
   }
 
   const passed = this.results.filter((x) => x.pass).length;
@@ -242,8 +308,10 @@ PP.Tests.prototype.visual = async function (name) {
     await this.setup('cheek', [['pustule', 0, 0, 3.4], ['papule', 7, 4, 3], ['whitehead', -6, -4, 2]], { zoom: 2.4 });
     this.hold('fingers', 0, 0, +(PP.params.get('t') || 1.6), { spread: 4.6, keep: true });
   } else if (name === 'squeeze') {
-    await this.setup('cheek', [['pustule', 0, 0, 3.4]], { zoom: 2.4 });
-    this.hold('fingers', 0, 0, 0.5, { spread: 5.2, keep: true });
+    const ar = PP.params.get('area') || 'cheek';
+    await this.setup(ar, [[PP.params.get('les') || 'pustule', 0, 0, +(PP.params.get('d') || 3.4)]], { zoom: +(PP.params.get('zoom') || 2.4) });
+    this.hold('fingers', 0, 0, +(PP.params.get('t') || 0.5), { spread: +(PP.params.get('spread') || 5.2), keep: true });
+    if (PP.params.get('rel') != null) { W.tools.up(); this.step(+PP.params.get('rel')); }
   } else if (name === 'blackhead') {
     await this.setup('nose', [['blackhead', 0, 0, 1.6], ['blackhead', 3, 2, 1.2], ['filament', -3, 1, 0.5], ['filament', -2, -2, 0.5], ['dpow', 4, -3, 3]], { zoom: 2.2 });
     this.hold('compress', 0, 0, 30); this.hold('loop', 0, 0, +(PP.params.get('t') || 2.5), { keep: true });
@@ -275,8 +343,25 @@ PP.Tests.prototype.visual = async function (name) {
     await B.jump(view);
     if (PP.params.get('hover')) B.hover = B.order.indexOf(PP.params.get('hover'));
     if (PP.params.get('all')) B.showAll = 1;
+    // ?pv=ox,oy,oz&pd=dx,dy,dz: hover preview of a close-up at the mesh point that ray hits
+    if (PP.params.get('pv')) {
+      const o = PP.params.get('pv').split(',').map(Number), d = (PP.params.get('pd') || '0,0,-1').split(',').map(Number);
+      const h = B.raycast(o, d), f = h && B.spotFor(h);
+      if (f && !f.bad) { B.preview = f; PP.diag.write('PREVIEW ' + f.name + ' ' + f.size); }
+    }
     if (name === 'bodyfade') { W.cam.zoom = W.cam.tz = W.area.view / B.widthAt(B.cam.dist); B.mode = 'entering'; B.fade = +(PP.params.get('f') || 0.5); B.freeze = true; }
     else B.freeze = true;
+  } else if (name === 'spot') {
+    // ?o=ox,oy,oz&d=dx,dy,dz: open the close-up at the mesh point that ray hits and show the whole patch
+    await this.setup('cheek', []); W.newPatch(+(PP.params.get('seed') || 7));
+    const B = PP.main.B; await B.load(); W.ensureAreas();
+    const o = (PP.params.get('o') || '0,592,600').split(',').map(Number), d = (PP.params.get('d') || '0,0,-1').split(',').map(Number);
+    const h = B.raycast(o, d), f = h && B.spotFor(h), id = f && B.makeSpot(f);
+    if (id) {
+      await PP.main.switchArea(id);
+      const C = W.cam; C.zoom = C.tz = +(PP.params.get('zoom') || PP.main.UI.zmin()); C.x = C.y = C.tx = C.ty = 0;
+      PP.diag.write('SPOT ' + W.area.name + ' size ' + W.area.size + ' lesions ' + W.lesions.length + ' ' + W.lesions.map((L) => L.type).join(','));
+    } else PP.diag.write('SPOT none ' + JSON.stringify(f && f.bad));
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];

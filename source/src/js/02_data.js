@@ -71,6 +71,24 @@ PP.AREAS = {
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.05, hair: 0, mix: [] },
 };
 
+/* Close-ups anywhere on the face/body: the region under the cursor picks a base area (skin mechanics, scan set,
+   hair) and a blemish mix typical of that site. Comedones and milia favour the T-zone, temples and the ear's
+   concha; ingrown hairs the beard area and neck; steatocystoma the chest; pilar cysts the scalp; boils and cysts
+   the shoulders and upper back (DermNet, MSD; see Sources). */
+PP.SPOTS = {
+  cheek: { base: 'cheek', name: 'cheek', size: 56, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['whitehead', 2], ['blackhead', 2], ['milium', 1]] },
+  forehead: { base: 'cheek', name: 'Forehead', size: 64, view: 24, rstl: 0, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 2], ['pustule', 1], ['milium', 1]] },
+  temple: { base: 'cheek', name: 'temple', size: 50, view: 20, rstl: 20, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 1], ['milium', 2]] },
+  chin: { base: 'beard', name: 'Chin', size: 50, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['ingrown', 2], ['whitehead', 1], ['nodule', 1]] },
+  jaw: { base: 'beard', name: 'jaw', size: 56, view: 24, rstl: null, mix: [['ingrown', 3], ['pustule', 2], ['papule', 2], ['nodule', 1]] },
+  ear: { base: 'cheek', name: 'ear', size: 36, view: 15, rstl: 90, mix: [['blackhead', 3], ['whitehead', 2], ['milium', 1], ['pustule', 1]] },
+  neck: { base: 'beard', name: 'Neck', size: 60, view: 26, rstl: 0, mix: [['ingrown', 3], ['pustule', 2], ['papule', 1], ['epidermoid', 1]] },
+  scalp: { base: 'scalp', name: 'scalp', size: 90, view: 40, rstl: null, mix: [['pilar', 1], ['pustule', 2], ['furuncle', 1]] },
+  chest: { base: 'back', name: 'Chest', size: 100, view: 44, rstl: 0, mix: [['papule', 3], ['pustule', 3], ['steatocystoma', 2], ['epidermoid', 1], ['blackhead', 2]] },
+  shoulder: { base: 'back', name: 'shoulder', size: 100, view: 44, rstl: 0, mix: [['pustule', 3], ['papule', 2], ['furuncle', 1], ['epidermoid', 1], ['lipoma', 1]] },
+  upperback: { base: 'back', name: 'upper back', size: 120, view: 52, rstl: 0, mix: [['pustule', 3], ['blackhead', 2], ['epidermoid', 1], ['steatocystoma', 1], ['furuncle', 1]] },
+};
+
 /* Contents materials (particle mat ids). rheo: liquid (Newtonian, Poiseuille), paste (Bingham), plug (rigid sliding),
    pearl (rigid ball), lobule (soft solid), core (cohesive chain), hair (elastic rod), sac (membrane chain). */
 PP.MAT = {
