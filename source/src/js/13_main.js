@@ -107,7 +107,7 @@ PP.main = {
       let n = 0;
       while (acc >= dt && n < 3) { W.step(dt); acc -= dt; n++; }
       if (n === 3) acc = 0;   // never snowball: a slow frame just runs the sim slower
-      if (B.mode === 'macro') PP.main.UI.easeCamera(fdt);
+      if (B.mode === 'macro' || B.mode === 'leaving') PP.main.UI.easeCamera(fdt);
     }
     const bMoved = B.update(fdt);
     if (W.switching) { R.present(); requestAnimationFrame(frame); return; }

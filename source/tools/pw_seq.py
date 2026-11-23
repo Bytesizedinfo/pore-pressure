@@ -54,7 +54,11 @@ with sync_playwright() as p:
     print("hover label:", lab, state(pg))
     pg.screenshot(path=pre + "3_hover.png", timeout=180000)
     t0 = time.time()
-    pg.mouse.down(); pg.mouse.up()
+    pg.mouse.down(); pg.mouse.up(); pg.wait_for_timeout(1500)
+    print("after click (should stay in 3D):", state(pg))
+    for k in range(30):
+        if state(pg)["mode"] != "body": break
+        pg.mouse.wheel(0, -120); pg.wait_for_timeout(150)
     s = wait_mode(pg, ("leaving", "macro"), 120)
     print("diving->", s, "%.1fs" % (time.time() - t0))
     s = wait_mode(pg, ("macro",), 120)

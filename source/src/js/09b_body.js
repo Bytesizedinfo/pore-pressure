@@ -504,11 +504,13 @@ PP.Body.prototype.regionAt = function (p, n) {
   return { key, name, dEye };
 };
 // the close-up a hit point would open (frame, size, region) without creating it
-PP.Body.prototype.spotFor = function (hit) {
+PP.Body.prototype.spotFor = function (hit, right) {
   const M = PP.M4, p = hit.p, n = this.normalAt(p), r = this.regionAt(p, n);
   if (r.bad) return r;
   const T = PP.SPOTS[r.key];
-  let t = M.cross([0, 1, 0], n); if (Math.hypot(t[0], t[1], t[2]) < 0.2) t = M.cross([0, 0, 1], n);
+  // the close-up's 'right' follows the view's right (projected onto the skin), so it opens the way you see it
+  let t = right ? M.sub(right, M.scale(n, M.dot(right, n))) : M.cross([0, 1, 0], n);
+  if (Math.hypot(t[0], t[1], t[2]) < 0.2) t = M.cross([0, 0, 1], n);
   t = M.norm(t); const b = M.cross(n, t);
   // keep the eye out of the patch where possible
   const size = r.key === 'ear' ? T.size : PP.clamp(Math.min(T.size, 2 * (r.dEye - 8)), 28, T.size);
@@ -668,41 +670,81 @@ PP.Body.prototype.blendInto = function () {
   gl.disable(gl.BLEND);
 };
 
-/* ---------------- transitions ---------------- */
-PP.Body.prototype.syncMacro = function (centred) {
-  // while both views are on screen the macro camera shows the same millimetres per pixel as the body camera
-  const W = this.W, C = W.cam, w = this.widthAt(this.cam.dist);
+/* ---------------- transitions ----------------
+   Nothing here moves the camera by itself. Zooming out past a whole patch hands over to the 3D view at exactly the
+   same place and millimetres per pixel, and the same scroll keeps going; zooming into the 3D view hands back to a
+   close-up right under the cursor once the view is about that close-up's size. Only a short crossfade runs alone. */
+PP.Body.prototype.syncMacro = function () {
+  // entering: the 3D camera leads; the fading macro view shows the same place at the same scale
+  const W = this.W, C = W.cam, a = this.anchors[W.areaId], w = this.widthAt(this.cam.dist), M = PP.M4;
   C.zoom = C.tz = W.area.view / w; C.vw = w; C.vh = (w * C.ch) / C.cw;
-  if (centred) { C.x = C.tx = 0; C.y = C.ty = 0; }
+  if (a) { const d = M.sub(this.cam.p, a.p); C.x = C.tx = M.dot(d, a.t); C.y = C.ty = M.dot(d, a.b); }
   C.vxp = C.vyp = 0;
 };
-PP.Body.prototype.enter = async function () {
-  if (this.mode !== 'macro') return;
-  const W = this.W, UI = PP.main.UI;
-  if (!this.ready) {
-    if (!this._waitToast) { this._waitToast = 1; UI.toast('', 'Loading the face…', ''); }
-    await this.load(); if (!this.ready) return;
-  }
-  const C = W.cam, id = W.areaId, a = this.anchors[id];
+PP.Body.prototype.syncBody = function () {
+  // leaving: the macro camera leads (you can keep zooming); the fading 3D view follows it
+  const W = this.W, C = W.cam, a = this.anchors[W.areaId], M = PP.M4;
   if (!a) return;
-  W.tools.up(); W.tools.ptr.down = false; UI.pan = null;
+  this.cam.p = M.add(M.add(a.p, M.scale(a.t, C.x)), M.scale(a.b, C.y)); this.cam.dist = this.distW(C.vw);
+  this.tgt = this.copyCam(this.cam);
+};
+PP.Body.prototype.begin = function () {
+  const W = this.W, UI = PP.main.UI;
+  W.tools.up(); W.tools.ptr.down = false; UI.pan = null; UI.cancelPending();
   W.ensureAreas();
-  const v = this.viewOf(a), M = PP.M4;
-  this.cam = { p: M.add(M.add(a.p, M.scale(a.t, C.x)), M.scale(a.b, C.y)), yaw: v.yaw, pitch: v.pitch, dist: this.distW(C.vw) };
-  this.matrices();
-  this.tween(this.overview(id), 1.15, 'out');
-  this.mode = 'entering'; this.fade = 0; this.t = 0; this._lesT = -1; this.showAll = 1.6; this.wheelLock = true; this.lastWheel = performance.now();
+  this.mode = 'entering'; this.fade = 0; this.t = 0; this._lesT = -1; this.showAll = 1.2; this.tw = null;
   this.R.hideDrops = true;
   UI.setBodyMode(true);
 };
-PP.Body.prototype.dive = function (id) {
-  if (!this.anchors[id] || this.mode === 'diving' || this.mode === 'leaving') return;
-  const a = this.anchors[id], v = this.viewOf(a);
-  this.diveId = id; this.areaReady = false;
-  this.tween({ p: a.p.slice(), yaw: v.yaw, pitch: v.pitch, dist: this.distW(PP.AREAS[id].size) }, 0.8, 'inout');
-  this.mode = 'diving'; this.hover = -1; this.preview = null; PP.main.UI.bodyLabel(null);
+// zoomed out past the whole patch: continue the same zoom in 3D from exactly this view
+PP.Body.prototype.enterAt = function (sx, sy, k) {
+  if (this.mode !== 'macro') return false;
+  const W = this.W, C = W.cam, a = this.anchors && this.anchors[W.areaId];
+  if (!this.ready || !a) {
+    if (!this.ready) { this.load(); if (!this._waitToast) { this._waitToast = 1; PP.main.UI.toast('', 'Loading the face…', ''); } }
+    return false;
+  }
+  // the macro camera may still be easing toward its target: start from where it is headed
+  C.zoom = C.tz; C.x = C.tx; C.y = C.ty; C.vw = W.area.view / C.zoom; C.vh = (C.vw * C.ch) / C.cw;
+  const v = this.viewOf(a), M = PP.M4;
+  this.cam = { p: M.add(M.add(a.p, M.scale(a.t, C.x)), M.scale(a.b, C.y)), yaw: v.yaw, pitch: v.pitch, dist: this.distW(C.vw) };
+  this.tgt = this.copyCam(this.cam);
+  this.begin(); this.syncIn = true;
+  this.matrices();
+  if (k) this.zoomAt(sx, sy, k);
+  return true;
+};
+// the Face button (and tests): straight to a framed view, no fly-out
+PP.Body.prototype.enter = async function (view) {
+  if (this.mode !== 'macro') return;
+  if (!this.ready) {
+    if (!this._waitToast) { this._waitToast = 1; PP.main.UI.toast('', 'Loading the face…', ''); }
+    await this.load(); if (!this.ready || this.mode !== 'macro') return;
+  }
+  if (!view && !this.anchors[this.W.areaId]) return;
+  this.cam = this.copyCam(view || this.overview(this.W.areaId)); this.tgt = this.copyCam(this.cam);
+  this.begin(); this.syncIn = false;
+  this.matrices();
+};
+// hand over to an area's close-up: view = {x, y, vw} keeps that place and scale; null shows the whole patch
+PP.Body.prototype.handTo = function (id, view) {
+  if (!this.anchors[id] || this.mode === 'switching' || this.mode === 'leaving') return;
+  this.mode = 'switching'; this.areaReady = false; this.handView = view;
+  this.hover = -1; this.preview = null; PP.main.UI.bodyLabel(null);
+  this.tgt = this.copyCam(this.cam); this.tw = null;
   const go = id === this.W.areaId ? Promise.resolve() : PP.main.switchArea(id);
   go.then(() => { this.areaReady = true; this._lesT = -1; });
+};
+PP.Body.prototype.dive = function (id) { this.handTo(id, null); };   // area menu: open that close-up
+PP.Body.prototype.beginLeave = function () {
+  const W = this.W, C = W.cam, A = W.area, v = this.handView, s = A.size / 2;
+  C.zoom = C.tz = PP.clamp(A.view / (v ? v.vw : A.size), PP.main.UI.zmin(), PP.UI.ZMAX);
+  C.vw = A.view / C.zoom; C.vh = (C.vw * C.ch) / C.cw;
+  C.x = C.tx = v ? PP.clamp(v.x, -s, s) : 0; C.y = C.ty = v ? PP.clamp(v.y, -s, s) : 0; C.vxp = C.vyp = 0;
+  this.mode = 'leaving'; this.t = 0; W.activeUntil = W.time + 1;
+  // fingers still on the screen keep pinching in the close-up
+  if (this.ptrs.size === 2) PP.main.UI.takePinch(this.ptrs);
+  this.ptrs.clear(); this.pinch = null; this.drag = null; this.R.canvas.classList.remove('grabbing');
 };
 PP.Body.prototype.update = function (dt) {
   if (this.mode === 'macro') return false;
@@ -710,32 +752,27 @@ PP.Body.prototype.update = function (dt) {
   this.t = (this.t || 0) + dt;
   let moved = this.ease(dt);
   if (this.showAll > 0) { this.showAll = Math.max(0, this.showAll - dt * 0.6); moved = true; }
+  const X = 0.3, sm = (x) => x * x * (3 - 2 * x);
   if (this.mode === 'entering') {
-    this.fade = PP.clamp(this.t / 0.42, 0, 1); this.fade = this.fade * this.fade * (3 - 2 * this.fade);
-    this.syncMacro(false);
-    if (this.t >= 0.42) { this.mode = 'body'; this.fade = 1; }
+    this.fade = sm(PP.clamp(this.t / X, 0, 1));
+    if (this.syncIn) this.syncMacro();
+    if (this.t >= X) { this.mode = 'body'; this.fade = 1; }
     moved = true;
-  } else if (this.mode === 'diving') {
-    if (!this.tw && this.areaReady) {
-      this.mode = 'leaving'; this.t = 0;
-      const a = this.anchors[this.diveId], v = this.viewOf(a);
-      this.tween({ p: a.p.slice(), yaw: v.yaw, pitch: v.pitch, dist: this.distW(PP.AREAS[this.diveId].size / 1.45) }, 0.6, 'out');
-      this.syncMacro(true);
-    }
+  } else if (this.mode === 'switching') {
+    if (this.areaReady) this.beginLeave();
     moved = true;
   } else if (this.mode === 'leaving') {
-    this.fade = 1 - PP.clamp(this.t / 0.4, 0, 1); this.fade = this.fade * this.fade * (3 - 2 * this.fade);
-    this.syncMacro(true);
-    if (this.t >= 0.4) this.exitToMacro();
+    this.fade = 1 - sm(PP.clamp(this.t / X, 0, 1));
+    this.syncBody();
+    if (this.t >= X) this.exitToMacro();
     moved = true;
   }
   if (moved) this.dirty = true;
   return moved;
 };
 PP.Body.prototype.exitToMacro = function () {
-  const W = this.W, C = W.cam;
+  const W = this.W;
   this.mode = 'macro'; this.fade = 0; this.tw = null;
-  C.tz = C.zoom; C.tx = C.x; C.ty = C.y; C.vxp = C.vyp = 0;
   this.R.hideDrops = false; this.R.presentTex = null;
   W.activeUntil = W.time + 1;
   PP.main.UI.setBodyMode(false);
@@ -748,6 +785,13 @@ PP.Body.prototype.jump = async function (view) {
   this.mode = 'body'; this.fade = 1; this.t = 1; this._lesT = -1; this.showAll = 0;
   this.R.hideDrops = true; PP.main.UI.setBodyMode(true);
 };
+// a pinch that started in the close-up carries on in 3D
+PP.Body.prototype.takePinch = function (ptrs) {
+  this.ptrs = new Map([...ptrs].map(([k, v]) => [k, { x: v.x, y: v.y }]));
+  const [a, b] = [...this.ptrs.values()];
+  if (a && b) this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  this.drag = null;
+};
 
 /* ---------------- input (body view) ---------------- */
 PP.Body.prototype.interactive = function () { return this.mode === 'body' || this.mode === 'entering'; };
@@ -755,24 +799,22 @@ PP.Body.prototype.down = function (e) {
   this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (this.ptrs.size === 2) {
     const [a, b] = [...this.ptrs.values()];
-    this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), dist0: this.tgt.dist, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+    this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
     this.drag = null; return;
   }
   // left-drag moves the body; right/middle-drag or Shift-drag turns it
-  this.drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: 0, rot: (e.button === 1 || e.button === 2 || e.shiftKey) && !PP.main.UI.space };
-  if (this.interactive() && this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
+  this.drag = { x: e.clientX, y: e.clientY, moved: 0, rot: (e.button === 1 || e.button === 2 || e.shiftKey) && !PP.main.UI.space };
 };
 PP.Body.prototype.move = function (e) {
   const pt = this.ptrs.get(e.pointerId); if (pt) { pt.x = e.clientX; pt.y = e.clientY; }
   if (!this.interactive()) return;
   if (this.pinch && this.ptrs.size === 2) {
     const [a, b] = [...this.ptrs.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y);
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    // two fingers: pinch zooms, moving them together turns the body
+    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    // two fingers: pinch zooms about the fingers, moving them together turns the body
     this.turn(mx - this.pinch.mx, my - this.pinch.my); this.pinch.mx = mx; this.pinch.my = my;
-    this.tgt.dist = PP.clamp(this.pinch.dist0 * (this.pinch.d0 / Math.max(d, 1)), this.distH(30), this.distH(1100));
-    this.checkDive(mx, my);
+    const k = this.pinch.d / d; this.pinch.d = d;
+    this.zoomAt(mx, my, k);
     return;
   }
   const D = this.drag;
@@ -783,29 +825,23 @@ PP.Body.prototype.move = function (e) {
       const r = this.R.canvas.getBoundingClientRect(), mmpx = this.widthAt(t.dist) / r.width, B = this.basis, M = PP.M4;
       t.p = M.add(t.p, M.add(M.scale(B.x, -dx * mmpx), M.scale(B.y, dy * mmpx)));
       const bb = this.meta.bbox;
-      for (let k = 0; k < 3; k++) t.p[k] = PP.clamp(t.p[k], bb[0][k] - 60, bb[1][k] + 60);
+      for (let k = 0; k < 3; k++) t.p[k] = PP.clamp(t.p[k], bb[0][k] - 400, bb[1][k] + 400);
     } else this.turn(dx, dy);
     this.R.canvas.classList.add('grabbing');
-    if (this.hover >= 0) { this.hover = -1; PP.main.UI.bodyLabel(null); }
+    if (this.hover >= 0 || this.preview) { this.hover = -1; this.preview = null; this.dirty = true; PP.main.UI.bodyLabel(null); }
     return;
   }
   this.hoverAt(e.clientX, e.clientY);
 };
 PP.Body.prototype.turn = function (dx, dy) {
   if (!this.interactive()) return;
-  if (this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
   this.tgt.yaw -= dx * 0.0062; this.tgt.pitch = PP.clamp(this.tgt.pitch + dy * 0.0055, -0.45, 1.3);
 };
 PP.Body.prototype.up = function (e) {
   this.ptrs.delete(e.pointerId);
   if (this.pinch) { if (this.ptrs.size < 2) this.pinch = null; return; }
-  const D = this.drag; this.drag = null;
+  this.drag = null;
   this.R.canvas.classList.remove('grabbing');
-  if (D && D.moved < 6 && this.interactive()) {
-    const h = this.pick(e.clientX, e.clientY);
-    if (h && h.area) this.dive(h.area);
-    else if (h) { const id = this.makeSpot(this.spotFor(h)); if (id) this.dive(id); }
-  }
 };
 PP.Body.prototype.hoverAt = function (sx, sy) {
   const now = performance.now();
@@ -815,43 +851,41 @@ PP.Body.prototype.hoverAt = function (sx, sy) {
   const idx = id ? this.order.indexOf(id) : -1;
   const UI = PP.main.UI;
   let pv = null;
-  if (id) { const n = this.areaLesions(id).length; UI.bodyLabel({ x: sx, y: sy, title: PP.AREAS[id].name, sub: n + ' blemish' + (n === 1 ? '' : 'es') + ' · click to zoom in' }); }
+  if (id) { const n = this.areaLesions(id).length; UI.bodyLabel({ x: sx, y: sy, title: PP.AREAS[id].name, sub: n + ' blemish' + (n === 1 ? '' : 'es') + ' · zoom in to see it close up' }); }
   else if (h) {
-    const f = this.spotFor(h);
+    const f = this.spotFor(h, this.basis && this.basis.x);
     if (f.bad) UI.bodyLabel({ x: sx, y: sy, title: f.bad === 'eye' ? 'Eye' : 'Lips', sub: 'no close-up here' });
-    else { pv = f; UI.bodyLabel({ x: sx, y: sy, title: f.name, sub: 'click or zoom in for a close-up' }); }
+    else { pv = f; UI.bodyLabel({ x: sx, y: sy, title: f.name, sub: 'zoom in here for a close-up' }); }
   } else UI.bodyLabel(null);
   const P0 = this.preview;
   if (idx !== this.hover || !!pv !== !!P0 || (pv && P0 && Math.hypot(pv.p[0] - P0.p[0], pv.p[1] - P0.p[1], pv.p[2] - P0.p[2]) > 0.5)) this.dirty = true;
   this.hover = idx; this.preview = pv;
 };
-// the scroll gesture that brought us out of the macro view must pause (250 ms between input events)
-// before scrolling out moves the face camera, so a flick or trackpad momentum stops at the face
-PP.Body.prototype.wheel = function (e) {
-  const ts = e.timeStamp || performance.now();
-  if (this.wheelLock && ts - (this.lastWheel || 0) > 250) this.wheelLock = false;
-  this.lastWheel = ts;
-  const k = Math.exp(e.deltaY * 0.0016);
-  if (this.wheelLock && k > 1) return;
-  this.zoomAt(e.clientX, e.clientY, k);
-};
+PP.Body.prototype.wheel = function (e) { this.zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.0018)); };
+// zoom about the point under the cursor (it stays put on screen), in or out, as far as you like
 PP.Body.prototype.zoomAt = function (sx, sy, k) {
   if (!this.interactive()) return;
-  if (this.tw) { this.tgt = this.copyCam(this.cam); this.tw = null; if (this.mode === 'entering') { this.mode = 'body'; this.fade = 1; } }
   const t = this.tgt, M = PP.M4;
-  const nd = PP.clamp(t.dist * k, this.distH(30), this.distH(1100));
-  const f = 1 - nd / t.dist;
-  if (f > 0) { const h = this.pick(sx, sy); if (h) t.p = M.lerp3(t.p, h.p, f); }
-  else if (f < 0) { const ov = this.overview(this.W.areaId); t.p = M.lerp3(t.p, ov.p, Math.min(1, -f * 0.8)); }
+  const nd = PP.clamp(t.dist * k, this.distH(12), this.distH(1100)), s = nd / t.dist;
+  const h = this.pick(sx, sy);
+  if (h) {
+    t.p = M.add(h.p, M.scale(M.sub(t.p, h.p), s));
+    const bb = this.meta.bbox;
+    for (let i = 0; i < 3; i++) t.p[i] = PP.clamp(t.p[i], bb[0][i] - 400, bb[1][i] + 400);
+  }
   t.dist = nd;
-  if (k < 1) this.checkDive(sx, sy);
+  if (k < 1 && h) this.checkHandover(h, sx, sy);
 };
-// zoomed in far enough over a marked area: dive into its macro patch
-PP.Body.prototype.checkDive = function (sx, sy) {
-  const h = this.pick(sx, sy); if (!h) return;
-  const w = Math.min(this.widthAt(this.tgt.dist), this.widthAt(this.tgt.dist) / this.aspect());
-  if (h.area) { if (w < PP.AREAS[h.area].size * 1.35) this.dive(h.area); return; }
-  // anywhere else on the skin: open a close-up there once the view is about its size
-  const f = this.spotFor(h);
-  if (!f.bad && w < f.size * 1.35) { const id = this.makeSpot(f); if (id) this.dive(id); }
+// zoomed in to about the size of a close-up: hand over to it right there, same place under the cursor, same scale
+PP.Body.prototype.checkHandover = function (h, sx, sy) {
+  const w = this.widthAt(this.tgt.dist);
+  let id = h.area, f = null;
+  const size = id ? PP.AREAS[id].size : (f = this.spotFor(h, this.basis && this.basis.x)).bad ? 0 : f.size;
+  if (!size || w > 0.9 * size) return;
+  if (!id) { id = this.makeSpot(f); if (!id) return; }
+  const a = this.anchors[id], M = PP.M4, d = M.sub(h.p, a.p);
+  const r = this.R.canvas.getBoundingClientRect(), fx = (sx - r.left) / r.width - 0.5, fy = 0.5 - (sy - r.top) / r.height;
+  const vh = (w * r.height) / r.width;
+  this.cam = this.copyCam(this.tgt);
+  this.handTo(id, { x: M.dot(d, a.t) - fx * w, y: M.dot(d, a.b) - fy * vh, vw: w });
 };

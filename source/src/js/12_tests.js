@@ -285,6 +285,42 @@ PP.Tests.prototype.all = async function () {
       { name: A && A.name, n: les.length, typesOk, inSpot, inCheek, kept: !!kept, eye: eye && eye.bad, menu: opt, size: A && A.size });
   }
 
+  // 19. zoom is only ever what you do: scrolling out past the whole patch continues in 3D from the same view and
+  //     scale, nothing pulls back or flies in afterwards, clicking doesn't dive, and zooming into the neck opens a
+  //     close-up under the cursor at the same scale
+  {
+    const B = PP.main.B; await B.load();
+    await this.setup('cheek', [], { zoom: 0.375 }); W.ensureAreas();
+    const C = W.cam; C.tz = C.zoom; C.tx = C.x; C.ty = C.y;
+    const cv = document.getElementById('gl'), r = cv.getBoundingClientRect();
+    const wheel = (x, y, dy) => cv.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    const settle = (sec) => { for (let i = 0; i < sec * 30; i++) B.update(1 / 30); };
+    const vw0 = W.area.view / C.zoom;
+    wheel(r.left + r.width * 0.6, r.top + r.height * 0.4, 100);
+    const w1 = B.widthAt(B.tgt.dist), m1 = B.mode;
+    settle(3); const w2 = B.widthAt(B.cam.dist), m2 = B.mode;
+    const outOk = (m1 === 'entering') && Math.abs(w1 / vw0 - Math.exp(0.18)) < 0.03 && Math.abs(w2 / w1 - 1) < 0.02 && m2 === 'body';
+    // click on the face: nothing happens
+    B.matrices();
+    const proj = (q) => { const m = B.VP, x = m[0] * q[0] + m[4] * q[1] + m[8] * q[2] + m[12], y = m[1] * q[0] + m[5] * q[1] + m[9] * q[2] + m[13], w = m[3] * q[0] + m[7] * q[1] + m[11] * q[2] + m[15]; return [r.left + (x / w * 0.5 + 0.5) * r.width, r.top + (0.5 - y / w * 0.5) * r.height]; };
+    const ev = (type, x, y) => cv.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 13, pointerType: 'mouse', bubbles: true }));
+    const [cx, cy] = proj(B.anchors.cheek.p); ev('pointerdown', cx, cy); ev('pointerup', cx, cy); settle(1.5);
+    const clickOk = B.mode === 'body' && W.areaId === 'cheek';
+    // look at the neck from in front and scroll in on it until the close-up takes over
+    const nh = B.raycast([30, 596, 600], [0, 0, -1]), nv = B.viewOf({ n: B.normalAt(nh.p) });
+    await B.jump({ p: nh.p.slice(), yaw: nv.yaw, pitch: nv.pitch, dist: B.distW(220) });
+    B.matrices(); const [nx, ny] = proj(nh.p);
+    let steps = 0, wLast = 0;
+    for (; steps < 60 && B.mode === 'body'; steps++) { wLast = B.widthAt(B.tgt.dist); wheel(nx, ny, -100); B.update(1 / 30); B.matrices(); }
+    for (let i = 0; i < 3000 && B.mode !== 'macro'; i++) { B.update(1 / 30); PP.main.UI.easeCamera(1 / 30); await new Promise((res) => setTimeout(res, 2)); }
+    const vwIn = W.cam.vw, under = PP.main.UI.toWorld(nx, ny);
+    // where the zoomed-on point lies in the close-up it handed over to (new spot: its centre; existing: wherever)
+    const an = B.anchors[W.areaId], dd = PP.M4.sub(nh.p, an.p), want = [PP.M4.dot(dd, an.t), PP.M4.dot(dd, an.b)];
+    for (let i = 0; i < 60; i++) PP.main.UI.easeCamera(1 / 30);
+    const inOk = PP.AREAS[W.areaId].name.startsWith('Neck') && Math.abs(vwIn / (wLast * Math.exp(-0.18)) - 1) < 0.08 && Math.hypot(under.x - want[0], under.y - want[1]) < 2 && Math.abs(W.cam.vw / vwIn - 1) < 0.01;
+    this.ok('zoom_only_when_you_zoom', outOk && clickOk && inOk, { m1, w1: +w1.toFixed(1), vw0: +vw0.toFixed(1), w2: +w2.toFixed(1), m2, clickOk, area: PP.AREAS[W.areaId].name, steps, vwIn: +vwIn.toFixed(1), wLast: +wLast.toFixed(1), under: [+under.x.toFixed(2), +under.y.toFixed(2)], want: [+want[0].toFixed(2), +want[1].toFixed(2)], vwAfter: +W.cam.vw.toFixed(1) });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;

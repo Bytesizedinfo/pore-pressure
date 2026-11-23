@@ -45,7 +45,8 @@ PP.UI.prototype.build = function () {
   area.value = W.areaId;
   area.addEventListener('change', async () => {
     const B = PP.main.B;
-    if (B && B.mode !== 'macro') { B.dive(area.value); return; }
+    if (B && B.interactive()) { B.dive(area.value); return; }
+    if (B && B.mode !== 'macro') { area.value = W.areaId; return; }
     await PP.main.switchArea(area.value);
   });
   // tones
@@ -66,13 +67,13 @@ PP.UI.prototype.build = function () {
   $('zout').addEventListener('click', () => this.zoomBy(1 / 1.35));
   $('zfit').addEventListener('click', () => {
     const B = PP.main.B;
-    if (B && B.mode !== 'macro') { if (B.interactive()) B.tween(B.overview(W.areaId), 0.7); return; }
+    if (B && B.mode !== 'macro') { if (B.interactive()) { B.cam = B.copyCam(B.overview(W.areaId)); B.tgt = B.copyCam(B.cam); } return; }
     W.cam.tz = this.zmin(); this.zoomBy(1);
   });
   $('zbody').addEventListener('click', () => {
     const B = PP.main.B;
     if (B.mode === 'macro') B.enter();
-    else if (B.interactive()) { const ov = B.overview(W.areaId); ov.dist = B.distH(560); ov.p = [0, 650, 40]; B.tween(ov, 0.8); }
+    else if (B.interactive()) { const ov = B.overview(W.areaId); ov.dist = B.distH(560); ov.p = [0, 650, 40]; B.cam = B.copyCam(ov); B.tgt = B.copyCam(ov); }
   });
   // add your own blemishes (any area)
   const add = $('addsel');
@@ -173,7 +174,7 @@ PP.UI.prototype.renderInfo = function () {
   const B = PP.main.B;
   if (B && B.mode !== 'macro') {
     const n = B.order ? B.order.reduce((s, id) => s + B.areaLesions(id).length, 0) : 0;
-    const html = `<h4>Face and upper body</h4><div class="sub">${B.order ? B.order.length : 0} areas · ${n} blemishes</div><p>Drag to move, right-drag (or Shift-drag, arrow keys, two fingers) to turn, scroll to zoom. Click any spot, or zoom into it, for a close-up there. Everything you popped stays as you left it.</p><p class="sub">Face and body: MakeHuman base mesh (CC0), shaded with the same skin model as the close-ups.</p>`;
+    const html = `<h4>Face and upper body</h4><div class="sub">${B.order ? B.order.length : 0} areas · ${n} blemishes</div><p>Drag to move, right-drag (or Shift-drag, arrow keys, two fingers) to turn, scroll to zoom. Zoom into any spot for a close-up there; zoom out of a close-up to come back. Everything you popped stays as you left it.</p><p class="sub">Face and body: MakeHuman base mesh (CC0), shaded with the same skin model as the close-ups.</p>`;
     if (html !== this.lastInfo) { this.$('info').innerHTML = html; this.lastInfo = html; }
     return;
   }
@@ -247,7 +248,8 @@ PP.UI.prototype.toWorld = function (sx, sy) {
 PP.UI.prototype.bindInput = function () {
   const W = this.W, cv = this.canvas, T = W.tools;
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
-  const body = () => PP.main.B && PP.main.B.mode !== 'macro' ? PP.main.B : null;
+  // input goes to the 3D view while it leads; while it fades back into a close-up, the close-up takes input
+  const body = () => { const B = PP.main.B; return B && (B.mode === 'entering' || B.mode === 'body' || B.mode === 'switching') ? B : null; };
   cv.addEventListener('pointerdown', (e) => {
     W.audio.start();
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointers (tests) */ }
@@ -316,8 +318,14 @@ PP.UI.prototype.bindInput = function () {
     }
     if (this.pinch && this.ptrs.size === 2) {
       const [a, b] = [...this.ptrs.values()];
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (this.pinch.z0 * (d / this.pinch.d0) < this.zmin() * 0.8) { this.pinch = null; PP.main.B.enter(); return; }
+      const d = Math.hypot(a.x - b.x, a.y - b.y), zz = this.pinch.z0 * (d / this.pinch.d0);
+      if (zz < this.zmin()) {
+        // pinching out past the whole patch carries on in 3D with the same fingers
+        W.cam.zoom = W.cam.tz = this.zmin();
+        const B = PP.main.B;
+        if (B.enterAt((a.x + b.x) / 2, (a.y + b.y) / 2, this.zmin() / zz)) { B.takePinch(this.ptrs); this.ptrs.clear(); this.pinch = null; }
+        return;
+      }
       W.cam.zoom = W.cam.tz = PP.clamp(this.pinch.z0 * (d / this.pinch.d0), this.zmin(), PP.UI.ZMAX);
       const r = cv.getBoundingClientRect();
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -367,15 +375,8 @@ PP.UI.prototype.bindInput = function () {
     const fx = (e.clientX - r.left) / r.width - 0.5, fy = 0.5 - (e.clientY - r.top) / r.height;
     const tvw0 = W.area.view / C.tz, tvh0 = (tvw0 * C.ch) / C.cw;
     const px = C.tx + fx * tvw0, py = C.ty + fy * tvh0;
-    // already showing the whole patch: keep scrolling out (a short detent) to pull back to the whole face
-    if (e.deltaY > 0 && C.tz <= this.zmin() * 1.001) {
-      // only count scrolling once the whole patch is actually on screen (a fast flick stops here first)
-      if (C.zoom <= this.zmin() * 1.04) this._over = (this._over || 0) + Math.min(e.deltaY, 120);
-      if (!this._overHint && this._over > 0) { this._overHint = 1; this.toast('', 'Whole patch', 'Keep scrolling out to see the whole face.'); }
-      if (this._over >= 180 && C.zoom <= this.zmin() * 1.04) { this._over = 0; PP.main.B.enter(); }
-      return;
-    }
-    this._over = 0;
+    // already showing the whole patch: the same scroll carries on out into the 3D view, from exactly here
+    if (e.deltaY > 0 && C.tz <= this.zmin() * 1.001) { PP.main.B.enterAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.0018)); return; }
     C.tz = PP.clamp(C.tz * Math.exp(-e.deltaY * 0.0018), this.zmin(), PP.UI.ZMAX);
     const tvw = W.area.view / C.tz, tvh = (tvw * C.ch) / C.cw;
     C.tx = px - fx * tvw; C.ty = py - fy * tvh;
@@ -434,13 +435,20 @@ PP.UI.prototype.addSpotOption = function (id) {
 PP.UI.prototype.removeSpotOption = function (id) {
   const o = this.$('area').querySelector('option[value="' + id + '"]'); if (o) o.remove();
 };
+// a pinch that started in 3D carries on in the close-up
+PP.UI.prototype.takePinch = function (ptrs) {
+  const C = this.W.cam;
+  this.ptrs = new Map([...ptrs].map(([k, v]) => [k, { x: v.x, y: v.y, type: 'touch' }]));
+  const [a, b] = [...this.ptrs.values()];
+  if (a && b) this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: C.zoom, cx: C.x, cy: C.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+};
 PP.UI.prototype.setBodyMode = function (on) {
   document.body.classList.toggle('bodyview', !!on);
   this.canvas.classList.toggle('orbit', !!on);
   this.canvas.setAttribute('aria-label', on ? 'Whole face view: drag to turn, scroll to zoom, click an area to zoom in' : 'Macro skin view');
   if (!on) this.bodyLabel(null);
   this.lastInfo = ''; this.renderInfo();
-  if (on && !this._bodyHint) { this._bodyHint = 1; this.toast('', 'Whole face', 'Drag to move, right-drag to turn, scroll to zoom. Click any spot or zoom into it for a close-up.'); }
+  if (on && !this._bodyHint) { this._bodyHint = 1; this.toast('', 'Whole face', 'Drag to move, right-drag to turn, scroll to zoom. Zoom into any spot for a close-up.'); }
 };
 PP.UI.prototype.bodyLabel = function (h) {
   const el = this.$('bodylabel');
@@ -474,23 +482,23 @@ PP.UI.prototype.eraseAt = function (x, y) {
   W.audio.click();
   W.fx.patchChanged();
 };
+// the view may look past the patch edge (the skin carries on); only its centre stays on the patch
 PP.UI.prototype.clampCam = function () {
   const W = this.W, C = W.cam, s = W.area.size / 2;
-  C.x = C.vw / 2 >= s ? 0 : PP.clamp(C.x, -s + C.vw / 2, s - C.vw / 2);
-  C.y = C.vh / 2 >= s ? 0 : PP.clamp(C.y, -s + C.vh / 2, s - C.vh / 2);
+  C.x = PP.clamp(C.x, -s, s); C.y = PP.clamp(C.y, -s, s);
 };
 PP.UI.prototype.zoomBy = function (k) {
   const W = this.W, C = W.cam, B = PP.main.B;
-  if (B && B.mode !== 'macro') { const r = this.canvas.getBoundingClientRect(); B.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / k); return; }
-  if (k < 1 && (C.tz || C.zoom) <= this.zmin() * 1.001) { B.enter(); return; }
+  const r = this.canvas.getBoundingClientRect(), mx = r.left + r.width / 2, my = r.top + r.height / 2;
+  if (B && B.interactive()) { B.zoomAt(mx, my, 1 / k); return; }
+  if (B && B.mode !== 'macro') return;
+  if (k < 1 && (C.tz || C.zoom) <= this.zmin() * 1.001) { B.enterAt(mx, my, 1 / k); return; }
   C.tz = PP.clamp((C.tz || C.zoom) * k, this.zmin(), PP.UI.ZMAX);
   this.clampTarget(); W.activeUntil = W.time + 1.5;
 };
 PP.UI.prototype.clampTarget = function () {
   const W = this.W, C = W.cam, s = W.area.size / 2;
-  const vw = W.area.view / C.tz, vh = (vw * C.ch) / C.cw;
-  C.tx = vw / 2 >= s ? 0 : PP.clamp(C.tx, -s + vw / 2, s - vw / 2);
-  C.ty = vh / 2 >= s ? 0 : PP.clamp(C.ty, -s + vh / 2, s - vh / 2);
+  C.tx = PP.clamp(C.tx, -s, s); C.ty = PP.clamp(C.ty, -s, s);
 };
 // critically damped glide toward the target view, plus pan inertia
 PP.UI.prototype.easeCamera = function (dt) {
