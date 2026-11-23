@@ -56,6 +56,7 @@ PP.UI.prototype.build = function () {
   this.renderTones();
   $('newpatch').addEventListener('click', () => { W.newPatch(Math.floor(Math.random() * 1e9)); this.sel = null; });
   $('wait').addEventListener('click', () => { W.timelapse(+$('waitsel').value); });
+  $('cleanskin').addEventListener('click', () => { W.cleanSkin(); this.toast('', 'Skin cleaned', 'Blood, pus and stains wiped away. Use the Saline wipe (S) to clean just one spot.'); });
   $('wipelens').addEventListener('click', () => { W.render.drops.length = 0; W._lensToast = 0; this.toast('', 'Lens wiped', ''); });
   const mute = $('mute');
   const setMute = () => { mute.classList.toggle('on', W.audio.on); mute.setAttribute('aria-pressed', W.audio.on ? 'true' : 'false'); };

@@ -470,6 +470,21 @@ PP.Tests.prototype.all = async function () {
       && g1.length >= 5 && spreadOf(g1) < 15 && g2.length >= 5 && spreadOf(g2) < 19, out);
   }
 
+  // 29. the saline wipe lifts pools and stains where you drag it; Clean skin clears everything loose
+  {
+    await this.setup('cheek', [], { zoom: 1.5 }); this.step(0.05);   // let the height grid forget the last test's lesions
+    for (const [x, y] of [[-3, 0], [0, 0.5], [3, -0.3], [-9, 9]]) P.well(-1, x, y, W.visH(x, y), 0.8, PP.MAT.blood, null, 0.3);
+    W.decals.paint(0, 0, 2.5, 'blood', 1); this.step(0.1); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, s0 = W.area.size;
+    const film = (x, y) => { gl.bindFramebuffer(gl.FRAMEBUFFER, R.film.fb); const px = new Uint8Array(4); gl.readPixels(Math.round((x / s0 + 0.5) * 1023), Math.round((y / s0 + 0.5) * 1023), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px[0]; };
+    const near = () => { let n = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && Math.hypot(P.x[i], P.y[i]) < 4) n++; return n; };
+    const before = { beads: near(), stain: film(0, 0) };
+    T.select('wipe'); this.drag('wipe', -5, 0, 5, 0, 0.4); W.render.render(1 / 60, true);
+    const after = { beads: near(), stain: film(0, 0), far: P.alive.some((a, i) => a && Math.hypot(P.x[i] + 9, P.y[i] - 9) < 1.5), soaked: T.wipeCol[1] < 0.9 };
+    W.cleanSkin(); let left = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i]) left++;
+    this.ok('wipe_cleans', before.beads >= 3 && after.beads === 0 && after.stain < before.stain * 0.6 && after.far && after.soaked && left === 0, { before, after, leftAfterClean: left });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -554,6 +569,19 @@ PP.Tests.prototype.visual = async function (name) {
     if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
     else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
     if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
+  } else if (name === 'wipe') {
+    // a bleeding cut; the left half wiped clean, the saline wipe still down on the skin
+    await this.setup('back', [], { zoom: 2.2 });
+    this.drag('blade15', -5, 0, 5, 0, 0.5); this.drag('blade15', -5, 0, 5, 0, 0.5);
+    this.step(+(PP.params.get('bleed') || 6));
+    const passes = +(PP.params.get('passes') || 2);
+    const T = this.W.tools; T.select('wipe');   // one wipe, several passes (as when you keep holding it)
+    for (let k = 0; k < passes; k++) {
+      const y0 = k % 2 ? -3 : 3; T.ptr.x = -8; T.ptr.y = y0; T.ptr.lx = -8; T.ptr.ly = y0; T.down(-8, y0, {});
+      for (let i = 1; i <= 60; i++) { T.move(-8 + 7.5 * i / 60, y0 - 2 * y0 * i / 60); this.W.step(this.dt); }
+      if (k < passes - 1) { T.up(); this.step(0.02); }
+    }
+    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05); }
   } else if (name === 'newles') {
     await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
   } else if (name === 'clusters') {

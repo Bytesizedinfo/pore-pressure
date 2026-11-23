@@ -269,6 +269,44 @@ PP.World.prototype.absorb = function (x, y, r, zmax) {
   }
 };
 
+// whatever lies loose on the skin under the wipe (anything not still attached to its lesion) is picked up
+PP.World.prototype.loose = function (i) {
+  const P = this.parts;
+  if (!P.alive[i] || P.pin[i]) return false;
+  if ((P.next[i] >= 0 || P.prev[i] >= 0) && P.chainOf(i).some((k) => P.pin[k])) return false;
+  return true;
+};
+PP.World.prototype.wipeAt = function (x, y, r, zmax) {
+  const P = this.parts, T = this.tools, g = T.wipeCol, st = T.wipeStain;
+  let n = 0;
+  for (let i = 0; i < P.hi; i++) {
+    if (!P.alive[i] || P.z[i] > zmax) continue;
+    const reach = r + (P.isLiquid(P.mat[i]) && P.onSkin[i] ? 1.485 * P.r[i] : 0);
+    if (Math.hypot(P.x[i] - x, P.y[i] - y) > reach || !this.loose(i)) continue;
+    // the stain it leaves on the wipe: blood red, pus cream, serum straw (diluted by the saline), else its own colour
+    const v = 4.19 * P.r[i] ** 3, fb = P.fb[i], fp = P.fp[i];
+    const c = P.isLiquid(P.mat[i]) || P.mat[i] === PP.MAT.pus
+      ? [PP.lerp(PP.lerp(0.93, 0.9, fp), 0.62, fb), PP.lerp(PP.lerp(0.88, 0.82, fp), 0.07, fb), PP.lerp(PP.lerp(0.68, 0.55, fp), 0.08, fb)]
+      : [P.cr[i], P.cg[i], P.cb[i]];
+    const w = v / (v + T.wipeVol + 0.3);
+    for (let k = 0; k < 3; k++) st[k] = PP.lerp(st[k], c[k], w);
+    T.wipeVol += v;
+    P.kill(i); n++;
+  }
+  // it saturates with what it picks up but never goes muddy: at most ~3/4 of the way to the stain colour
+  const s = 0.75 * (1 - Math.exp(-T.wipeVol / 5));
+  for (let k = 0; k < 3; k++) g[k] = PP.lerp(0.94, st[k], s);
+  if (n) this.activeUntil = this.time + 0.5;
+  return n;
+};
+// a full wipe-down: loose material, pools and stains gone (an iodine prep stays)
+PP.World.prototype.cleanSkin = function () {
+  const P = this.parts;
+  for (let i = 0; i < P.hi; i++) if (this.loose(i)) P.kill(i);
+  this.render.brush(0, 0, this.area.size * 0.75, [1, 1, 1, 0], 'sub');
+  this.activeUntil = this.time + 1;
+};
+
 PP.World.prototype.lensHit = function (i) {
   if (!this.S.lens) return;
   const P = this.parts, C = this.cam;

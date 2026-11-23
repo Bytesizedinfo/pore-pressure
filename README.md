@@ -3,7 +3,7 @@
 A macro skin extraction simulator that runs in the browser (WebGL2).
 
 - **Skin:** rebuilt from real macro photographs. They are split into melanin, hemoglobin, relief and fine-detail maps, then relit with a studio HDRI and subsurface scattering.
-- **Lesions and tools:** 29 lesion types across six body areas plus close-ups anywhere, and 18 clinical instruments (gloved fingers, comedone loop, pore vacuum, needle, #11 and #15 blades, punch, hemostat, forceps, lidocaine and more).
+- **Lesions and tools:** 29 lesion types across six body areas plus close-ups anywhere, and 19 clinical instruments (gloved fingers, saline wipe, comedone loop, pore vacuum, needle, #11 and #15 blades, punch, hemostat, forceps, lidocaine and more).
 - **Interactions come from physics, not scripts.** Contact forces load each lesion's cavity. Then either the roof or the follicle/cyst wall fails, and the contents flow out according to their material.
 - **Wounds:** cuts gape and punch holes turn oval along the skin's tension lines.
 - **Your own blemishes:** use the **Add blemish** menu; **Erase** (or X) removes them.
@@ -28,6 +28,11 @@ A macro skin extraction simulator that runs in the browser (WebGL2).
   - Blood is turbid: thin films are translucent bright red and thicker pools are deep crimson.
   - Pus is opaque cream, serum is clear straw, and mixtures turn pink or streaky.
   - Shed blood gels after a few minutes, films dry, and stains darken on the oxidation clock.
+- **Cleaning up:**
+  - The **Saline wipe** (S, second in the tray) lifts blood, pus and serum where you drag it. It picks up loose material, and dried blood takes a few passes. Hold it still to blot.
+  - The wipe turns pink or cream with what it soaks up, and you get a fresh one each time you pick it up.
+  - Wiping a fresh cut disturbs its clot, so it oozes again.
+  - **Clean skin** wipes the whole patch at once, but leaves an iodine prep in place.
   - Pus, keratin and chalk are sticky and stay where they land.
   - Only real pressure makes a jet (dripping-to-jetting at Weber number ~6).
 - **New lesions:**

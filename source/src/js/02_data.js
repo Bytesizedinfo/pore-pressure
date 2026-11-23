@@ -263,6 +263,7 @@ PP.LTYPES = {
 
 PP.TOOLS = [
   { id: 'move', name: 'Move', group: 'Hands', key: 'M', opt: 'Drag to move around the skin. Hold Space to do the same with any instrument; right-drag works too.' },
+  { id: 'wipe', name: 'Saline wipe', group: 'Hands', key: 'S', opt: 'Drag to wipe away blood, pus and stains (heavy or dried stains take two or three passes); hold still to blot. Each time you pick it up you get a fresh one.' },
   { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Scroll to set spread; Q/E rotate. On touch, pinch with two fingers.' },
   { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid.' },
   { id: 'loop', name: 'Comedone loop', group: 'Extraction', key: '3', opt: 'Centre the ring over the pore and hold. Scroll changes loop size (1.5 / 2.5 mm).' },
@@ -284,6 +285,7 @@ PP.TOOLS = [
 ];
 
 PP.ICONS = {
+  wipe: '<rect x="4" y="8" width="13" height="10" rx="1.6"/><path d="M7 12h7M7 14.5h4.5"/><path d="M19.5 3.5c0 1.3-1.2 2.1-1.2 3.2a1.2 1.2 0 0 0 2.4 0c0-1.1-1.2-1.9-1.2-3.2z"/>',
   move: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   fingers: '<path d="M7 20c-2-3-2-7 0-10l2-5c.5-1.3 2.5-.8 2 .6L10 10l4-6c.8-1.1 2.4-.2 1.8 1L13 11l4-3c1-.7 2.1.5 1.3 1.5L14 15c-1.5 2-3 4-7 5z"/>',
   swabs: '<path d="M4 20 13 11M11 20l9-9"/><ellipse cx="15" cy="9" rx="2.6" ry="1.8" transform="rotate(-45 15 9)"/><ellipse cx="21" cy="9" rx="2.2" ry="1.6" transform="rotate(-45 21 9)"/>',

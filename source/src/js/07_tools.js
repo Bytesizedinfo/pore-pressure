@@ -14,6 +14,7 @@ PP.Tools = function (W) {
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
   this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
+  this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.wipeStain = [0.62, 0.07, 0.08];   // the saline wipe soaks up the colour of what it picks up
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
   this.prims = new Float32Array(16 * 160); this.nPrim = 0;
@@ -26,6 +27,7 @@ PP.Tools = function (W) {
 
 PP.Tools.prototype.select = function (id) {
   this.release();
+  if (id === 'wipe') { this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.ws = null; }   // a fresh one each time
   this.id = id;
   this.W.fx.toolChanged(id);
 };
@@ -495,6 +497,33 @@ PP.Tools.prototype.update = function (dt) {
       W.absorb(p.x, p.y, 6.5, zr + 3);
     }
     this.primRaw([p.x, p.y, zr + (p.down ? 0.6 : 3), 0, 9, 9, 0.6, 0.15, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.35]);
+  } else if (id === 'wipe') {
+    // saline-moistened gauze: wiping lifts blood, pus and serum off the skin (dried blood needs a few passes) and
+    // picks up loose material; holding still blots. It does not press on lesions.
+    // Film removal is stamped every 0.6 mm of travel (independent of frame rate and drag speed, and large enough
+    // per stamp to register in the 8-bit film): one pass takes about half of a heavy blood stain, so thick or
+    // dried stains need two or three passes. Holding still blots, by time.
+    const zr = W.skinH(p.x, p.y);
+    if (p.down) {
+      let ws = this.ws;
+      if (!ws) { ws = this.ws = { x: p.x, y: p.y, blot: 0 }; W.render.brush(p.x, p.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub'); }
+      let d = Math.hypot(p.x - ws.x, p.y - ws.y);
+      const moved = d;
+      while (d >= 0.6) {
+        ws.x += ((p.x - ws.x) * 0.6) / d; ws.y += ((p.y - ws.y) * 0.6) / d; d -= 0.6;
+        W.render.brush(ws.x, ws.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub');
+      }
+      if (Math.hypot(p.x - p.lx, p.y - p.ly) < 0.02 && p.t > 0.2) {
+        ws.blot += dt;
+        while (ws.blot >= 0.1) { ws.blot -= 0.1; W.render.brush(p.x, p.y, 3.8, [0.01, 0.03, 0.08, 0], 'sub'); }
+      }
+      W.wipeAt(p.x, p.y, 4.3, zr + 4);
+      // wiping across a fresh cut disturbs its clot: it oozes again
+      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
+      if (L > 0) for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 3) c.clot = Math.max(0, c.clot - 0.003 * L);
+    } else this.ws = null;
+    const g = this.wipeCol;
+    this.primRaw([p.x, p.y, zr + (p.down ? 0.53 : 3), 0, 4.6, 4.6, 0.5, 0.25, 2, PP.MATOBJ.gauze, 0, 0, g[0], g[1], g[2], 0.35]);
   } else if (id === 'packing') {
     const zr = W.skinH(p.x, p.y);
     if (p.down) {

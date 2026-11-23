@@ -176,6 +176,7 @@ body.bodyview #tray:hover { opacity: 1; }
     <div class="group"><span class="lbl">Clinic clock</span><span id="clock">+0:00</span>
       <select id="waitsel" aria-label="Time-lapse length"><option value="60">1 min</option><option value="600" selected>10 min</option><option value="7200">2 h</option><option value="172800">2 days</option></select>
       <button id="wait" title="Time-lapse: let slow processes run (anesthetic onset, clotting, healing, steroid response)">Wait</button></div>
+    <button id="cleanskin" title="Wipe all blood, pus and stains off the skin">Clean skin</button>
     <button id="wipelens" title="Wipe the camera lens">Wipe lens</button>
     <button id="mute" title="Sound on/off" aria-pressed="true">Sound</button>
     <button id="settings" title="Gross settings, sources and credits">Settings</button>
@@ -703,6 +704,7 @@ PP.LTYPES = {
 
 PP.TOOLS = [
   { id: 'move', name: 'Move', group: 'Hands', key: 'M', opt: 'Drag to move around the skin. Hold Space to do the same with any instrument; right-drag works too.' },
+  { id: 'wipe', name: 'Saline wipe', group: 'Hands', key: 'S', opt: 'Drag to wipe away blood, pus and stains (heavy or dried stains take two or three passes); hold still to blot. Each time you pick it up you get a fresh one.' },
   { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Scroll to set spread; Q/E rotate. On touch, pinch with two fingers.' },
   { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid.' },
   { id: 'loop', name: 'Comedone loop', group: 'Extraction', key: '3', opt: 'Centre the ring over the pore and hold. Scroll changes loop size (1.5 / 2.5 mm).' },
@@ -724,6 +726,7 @@ PP.TOOLS = [
 ];
 
 PP.ICONS = {
+  wipe: '<rect x="4" y="8" width="13" height="10" rx="1.6"/><path d="M7 12h7M7 14.5h4.5"/><path d="M19.5 3.5c0 1.3-1.2 2.1-1.2 3.2a1.2 1.2 0 0 0 2.4 0c0-1.1-1.2-1.9-1.2-3.2z"/>',
   move: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   fingers: '<path d="M7 20c-2-3-2-7 0-10l2-5c.5-1.3 2.5-.8 2 .6L10 10l4-6c.8-1.1 2.4-.2 1.8 1L13 11l4-3c1-.7 2.1.5 1.3 1.5L14 15c-1.5 2-3 4-7 5z"/>',
   swabs: '<path d="M4 20 13 11M11 20l9-9"/><ellipse cx="15" cy="9" rx="2.6" ry="1.8" transform="rotate(-45 15 9)"/><ellipse cx="21" cy="9" rx="2.2" ry="1.6" transform="rotate(-45 21 9)"/>',
@@ -2115,6 +2118,7 @@ PP.Tools = function (W) {
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
   this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
+  this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.wipeStain = [0.62, 0.07, 0.08];   // the saline wipe soaks up the colour of what it picks up
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
   this.prims = new Float32Array(16 * 160); this.nPrim = 0;
@@ -2127,6 +2131,7 @@ PP.Tools = function (W) {
 
 PP.Tools.prototype.select = function (id) {
   this.release();
+  if (id === 'wipe') { this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.ws = null; }   // a fresh one each time
   this.id = id;
   this.W.fx.toolChanged(id);
 };
@@ -2596,6 +2601,33 @@ PP.Tools.prototype.update = function (dt) {
       W.absorb(p.x, p.y, 6.5, zr + 3);
     }
     this.primRaw([p.x, p.y, zr + (p.down ? 0.6 : 3), 0, 9, 9, 0.6, 0.15, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.35]);
+  } else if (id === 'wipe') {
+    // saline-moistened gauze: wiping lifts blood, pus and serum off the skin (dried blood needs a few passes) and
+    // picks up loose material; holding still blots. It does not press on lesions.
+    // Film removal is stamped every 0.6 mm of travel (independent of frame rate and drag speed, and large enough
+    // per stamp to register in the 8-bit film): one pass takes about half of a heavy blood stain, so thick or
+    // dried stains need two or three passes. Holding still blots, by time.
+    const zr = W.skinH(p.x, p.y);
+    if (p.down) {
+      let ws = this.ws;
+      if (!ws) { ws = this.ws = { x: p.x, y: p.y, blot: 0 }; W.render.brush(p.x, p.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub'); }
+      let d = Math.hypot(p.x - ws.x, p.y - ws.y);
+      const moved = d;
+      while (d >= 0.6) {
+        ws.x += ((p.x - ws.x) * 0.6) / d; ws.y += ((p.y - ws.y) * 0.6) / d; d -= 0.6;
+        W.render.brush(ws.x, ws.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub');
+      }
+      if (Math.hypot(p.x - p.lx, p.y - p.ly) < 0.02 && p.t > 0.2) {
+        ws.blot += dt;
+        while (ws.blot >= 0.1) { ws.blot -= 0.1; W.render.brush(p.x, p.y, 3.8, [0.01, 0.03, 0.08, 0], 'sub'); }
+      }
+      W.wipeAt(p.x, p.y, 4.3, zr + 4);
+      // wiping across a fresh cut disturbs its clot: it oozes again
+      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
+      if (L > 0) for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 3) c.clot = Math.max(0, c.clot - 0.003 * L);
+    } else this.ws = null;
+    const g = this.wipeCol;
+    this.primRaw([p.x, p.y, zr + (p.down ? 0.53 : 3), 0, 4.6, 4.6, 0.5, 0.25, 2, PP.MATOBJ.gauze, 0, 0, g[0], g[1], g[2], 0.35]);
   } else if (id === 'packing') {
     const zr = W.skinH(p.x, p.y);
     if (p.down) {
@@ -5304,6 +5336,44 @@ PP.World.prototype.absorb = function (x, y, r, zmax) {
   }
 };
 
+// whatever lies loose on the skin under the wipe (anything not still attached to its lesion) is picked up
+PP.World.prototype.loose = function (i) {
+  const P = this.parts;
+  if (!P.alive[i] || P.pin[i]) return false;
+  if ((P.next[i] >= 0 || P.prev[i] >= 0) && P.chainOf(i).some((k) => P.pin[k])) return false;
+  return true;
+};
+PP.World.prototype.wipeAt = function (x, y, r, zmax) {
+  const P = this.parts, T = this.tools, g = T.wipeCol, st = T.wipeStain;
+  let n = 0;
+  for (let i = 0; i < P.hi; i++) {
+    if (!P.alive[i] || P.z[i] > zmax) continue;
+    const reach = r + (P.isLiquid(P.mat[i]) && P.onSkin[i] ? 1.485 * P.r[i] : 0);
+    if (Math.hypot(P.x[i] - x, P.y[i] - y) > reach || !this.loose(i)) continue;
+    // the stain it leaves on the wipe: blood red, pus cream, serum straw (diluted by the saline), else its own colour
+    const v = 4.19 * P.r[i] ** 3, fb = P.fb[i], fp = P.fp[i];
+    const c = P.isLiquid(P.mat[i]) || P.mat[i] === PP.MAT.pus
+      ? [PP.lerp(PP.lerp(0.93, 0.9, fp), 0.62, fb), PP.lerp(PP.lerp(0.88, 0.82, fp), 0.07, fb), PP.lerp(PP.lerp(0.68, 0.55, fp), 0.08, fb)]
+      : [P.cr[i], P.cg[i], P.cb[i]];
+    const w = v / (v + T.wipeVol + 0.3);
+    for (let k = 0; k < 3; k++) st[k] = PP.lerp(st[k], c[k], w);
+    T.wipeVol += v;
+    P.kill(i); n++;
+  }
+  // it saturates with what it picks up but never goes muddy: at most ~3/4 of the way to the stain colour
+  const s = 0.75 * (1 - Math.exp(-T.wipeVol / 5));
+  for (let k = 0; k < 3; k++) g[k] = PP.lerp(0.94, st[k], s);
+  if (n) this.activeUntil = this.time + 0.5;
+  return n;
+};
+// a full wipe-down: loose material, pools and stains gone (an iodine prep stays)
+PP.World.prototype.cleanSkin = function () {
+  const P = this.parts;
+  for (let i = 0; i < P.hi; i++) if (this.loose(i)) P.kill(i);
+  this.render.brush(0, 0, this.area.size * 0.75, [1, 1, 1, 0], 'sub');
+  this.activeUntil = this.time + 1;
+};
+
 PP.World.prototype.lensHit = function (i) {
   if (!this.S.lens) return;
   const P = this.parts, C = this.cam;
@@ -5455,6 +5525,7 @@ PP.UI.prototype.build = function () {
   this.renderTones();
   $('newpatch').addEventListener('click', () => { W.newPatch(Math.floor(Math.random() * 1e9)); this.sel = null; });
   $('wait').addEventListener('click', () => { W.timelapse(+$('waitsel').value); });
+  $('cleanskin').addEventListener('click', () => { W.cleanSkin(); this.toast('', 'Skin cleaned', 'Blood, pus and stains wiped away. Use the Saline wipe (S) to clean just one spot.'); });
   $('wipelens').addEventListener('click', () => { W.render.drops.length = 0; W._lensToast = 0; this.toast('', 'Lens wiped', ''); });
   const mute = $('mute');
   const setMute = () => { mute.classList.toggle('on', W.audio.on); mute.setAttribute('aria-pressed', W.audio.on ? 'true' : 'false'); };
@@ -6441,6 +6512,21 @@ PP.Tests.prototype.all = async function () {
       && g1.length >= 5 && spreadOf(g1) < 15 && g2.length >= 5 && spreadOf(g2) < 19, out);
   }
 
+  // 29. the saline wipe lifts pools and stains where you drag it; Clean skin clears everything loose
+  {
+    await this.setup('cheek', [], { zoom: 1.5 }); this.step(0.05);   // let the height grid forget the last test's lesions
+    for (const [x, y] of [[-3, 0], [0, 0.5], [3, -0.3], [-9, 9]]) P.well(-1, x, y, W.visH(x, y), 0.8, PP.MAT.blood, null, 0.3);
+    W.decals.paint(0, 0, 2.5, 'blood', 1); this.step(0.1); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, s0 = W.area.size;
+    const film = (x, y) => { gl.bindFramebuffer(gl.FRAMEBUFFER, R.film.fb); const px = new Uint8Array(4); gl.readPixels(Math.round((x / s0 + 0.5) * 1023), Math.round((y / s0 + 0.5) * 1023), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px[0]; };
+    const near = () => { let n = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && Math.hypot(P.x[i], P.y[i]) < 4) n++; return n; };
+    const before = { beads: near(), stain: film(0, 0) };
+    T.select('wipe'); this.drag('wipe', -5, 0, 5, 0, 0.4); W.render.render(1 / 60, true);
+    const after = { beads: near(), stain: film(0, 0), far: P.alive.some((a, i) => a && Math.hypot(P.x[i] + 9, P.y[i] - 9) < 1.5), soaked: T.wipeCol[1] < 0.9 };
+    W.cleanSkin(); let left = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i]) left++;
+    this.ok('wipe_cleans', before.beads >= 3 && after.beads === 0 && after.stain < before.stain * 0.6 && after.far && after.soaked && left === 0, { before, after, leftAfterClean: left });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -6525,6 +6611,19 @@ PP.Tests.prototype.visual = async function (name) {
     if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
     else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
     if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
+  } else if (name === 'wipe') {
+    // a bleeding cut; the left half wiped clean, the saline wipe still down on the skin
+    await this.setup('back', [], { zoom: 2.2 });
+    this.drag('blade15', -5, 0, 5, 0, 0.5); this.drag('blade15', -5, 0, 5, 0, 0.5);
+    this.step(+(PP.params.get('bleed') || 6));
+    const passes = +(PP.params.get('passes') || 2);
+    const T = this.W.tools; T.select('wipe');   // one wipe, several passes (as when you keep holding it)
+    for (let k = 0; k < passes; k++) {
+      const y0 = k % 2 ? -3 : 3; T.ptr.x = -8; T.ptr.y = y0; T.ptr.lx = -8; T.ptr.ly = y0; T.down(-8, y0, {});
+      for (let i = 1; i <= 60; i++) { T.move(-8 + 7.5 * i / 60, y0 - 2 * y0 * i / 60); this.W.step(this.dt); }
+      if (k < passes - 1) { T.up(); this.step(0.02); }
+    }
+    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05); }
   } else if (name === 'newles') {
     await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
   } else if (name === 'clusters') {
