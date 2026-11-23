@@ -579,9 +579,12 @@ PP.Body.prototype.uploadLesions = function () {
       const open = L.open && L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
       const cr = L.popped || L.crater > 0 ? Math.max(open, L.R * 0.3 * Math.min(1, (L.crater || 0) + 0.4)) : open * 0.6;
       let headR = 0;
-      if ((vis === 7 || vis === 8 || vis === 1 || vis === 2 || vis === 6) && !L.popped && f > 0.3) headR = vis === 1 || vis === 2 ? L.R * 0.35 : vis === 6 ? L.R * 0.6 : L.R * 0.5;
+      if ((vis === 7 || vis === 8 || vis === 27 || vis === 1 || vis === 2 || vis === 6) && !L.popped && f > 0.3) headR = vis === 1 || vis === 2 ? L.R * 0.35 : vis === 6 ? L.R * 0.6 : L.R * 0.5;
+      if ((vis === 23 || vis === 24) && f > 0.2) headR = L.R * 0.85;
+      if (vis === 25 || vis === 26) headR = L.R * 0.6;
       if ((vis === 9 || vis === 10) && !L.popped) headR = L.R * (0.12 + 0.2 * (L.pointing || 0)) * (L.pointing > 0.3 ? 1 : 0);
-      const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'ingrown' ? L.pusCol : vis === 6 ? PP.hex2lin('#f4efe2') : PP.hex2lin('#f0ead8');
+      const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'ingrown' || L.type === 'folliculitis' ? L.pusCol
+        : vis === 23 ? PP.hex2lin('#ecdcae') : vis === 24 ? PP.hex2lin('#4a0b12') : vis === 25 || vis === 26 ? PP.hex2lin('#f2eee2') : vis === 6 ? PP.hex2lin('#f4efe2') : PP.hex2lin('#f0ead8');
       const dark = vis === 0 || vis === 3 || vis === 4 ? 1 : vis === 5 ? 0.35 : 0;
       d.set([L.x + L.ox, L.y + L.oy, L.R, Math.max(0, L.domeH()),
         headR, (L.inflam || 0) + (L.deep || 0) * 0.4 + (L.irrit || 0) * 0.5, dark, cr,

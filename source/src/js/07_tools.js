@@ -108,7 +108,7 @@ PP.Tools.prototype.release = function () {
 
 PP.Tools.prototype.tryGrab = function (x, y) {
   const W = this.W, P = W.parts;
-  const grabbable = (i) => { const m = P.mat[i]; return m === PP.MAT.hair || m === PP.MAT.core || m === PP.MAT.sac || m === PP.MAT.fat || m === PP.MAT.sebum || m === PP.MAT.keratin || m === PP.MAT.packing || m === PP.MAT.molluscum || m === PP.MATOBJ.skinCore || m === PP.MAT.pus || m === PP.MAT.pearl; };
+  const grabbable = (i) => { const m = P.mat[i]; return m === PP.MAT.chalk || m === PP.MAT.hair || m === PP.MAT.core || m === PP.MAT.sac || m === PP.MAT.fat || m === PP.MAT.sebum || m === PP.MAT.keratin || m === PP.MAT.packing || m === PP.MAT.molluscum || m === PP.MATOBJ.skinCore || m === PP.MAT.pus || m === PP.MAT.pearl; };
   const anchored = (k) => { const m = P.mat[k]; return m === PP.MAT.sac || m === PP.MAT.core || m === PP.MAT.hair || m === PP.MATOBJ.skinCore; };
   let i;
   if (this.id === 'hemostat') {

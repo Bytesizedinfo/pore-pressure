@@ -3,7 +3,7 @@
 A macro skin extraction simulator that runs in the browser (WebGL2).
 
 - **Skin:** rebuilt from real macro photographs. They are split into melanin, hemoglobin, relief and fine-detail maps, then relit with a studio HDRI and subsurface scattering.
-- **Lesions and tools:** 21 lesion types across six body areas, and 18 clinical instruments (gloved fingers, comedone loop, pore vacuum, needle, #11 and #15 blades, punch, hemostat, forceps, lidocaine and more).
+- **Lesions and tools:** 29 lesion types across six body areas plus close-ups anywhere, and 18 clinical instruments (gloved fingers, comedone loop, pore vacuum, needle, #11 and #15 blades, punch, hemostat, forceps, lidocaine and more).
 - **Interactions come from physics, not scripts.** Contact forces load each lesion's cavity. Then either the roof or the follicle/cyst wall fails, and the contents flow out according to their material.
 - **Wounds:** cuts gape and punch holes turn oval along the skin's tension lines.
 - **Your own blemishes:** use the **Add blemish** menu; **Erase** (or X) removes them.
@@ -23,6 +23,20 @@ A macro skin extraction simulator that runs in the browser (WebGL2).
   - Cutting a pressurised lesion makes it gush along the cut, and the cut is pushed wider open.
   - Solid papules only bleed, and inflamed tissue bleeds more.
   - A cyst slit shows its white wall over keratin, a lipoma its fat, and a pus pocket its pus.
+- **Pus and blood behave like liquids:**
+  - Contents well up at the opening as a bead that grows until it is too heavy for the slope. It then runs downhill, leaving a thin wet trail, and stops once small enough. The clinging limit is the Furmidge balance: blood holds to about 3.6 mm wide on vertical skin. Touching beads merge into one pool, drawn as a single liquid surface with menisci.
+  - Blood is turbid: thin films are translucent bright red and thicker pools are deep crimson.
+  - Pus is opaque cream, serum is clear straw, and mixtures turn pink or streaky.
+  - Shed blood gels after a few minutes, films dry, and stains darken on the oxidation clock.
+  - Pus, keratin and chalk are sticky and stay where they land.
+  - Only real pressure makes a jet (dripping-to-jetting at Weber number ~6).
+- **New lesions:**
+  - abscess;
+  - inflamed (ruptured) epidermoid cyst;
+  - friction and blood blisters (a needle at the edge drains them with the roof kept; a #15 makes flaps);
+  - gouty tophus on the ear rim and calcinosis cutis (gritty white chalk);
+  - Favre-Racouchot comedone clusters on the temples;
+  - folliculitis pustules pierced by hairs.
 - **Squeezing:** fingertip pads spread as you press harder, grip the skin and drag it inward. The skin between them bunches into a fold that pales on its crest. On release it springs back, about half at once and the rest over a few seconds, then the reactive redness follows.
 
 For entertainment and education only. Squeezing at home risks scarring and infection; see a dermatologist.

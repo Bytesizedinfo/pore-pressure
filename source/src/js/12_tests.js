@@ -392,6 +392,84 @@ PP.Tests.prototype.all = async function () {
     this.ok('blade_reactions', gush && solidOk && cystOk && l11 <= 3.01 && l15 > 7, { gush, events: G.events, solidOk, inflam: cP && +cP.inflam.toFixed(2), cystOk, len11: +l11.toFixed(2), len15: +l15.toFixed(2) });
   }
 
+  // 24. blood wells up as one growing bead at a puncture (not a spray of droplets)
+  {
+    await this.setup('cheek', [], { zoom: 2 });
+    W.wounds.addPuncture(0, 0, 0.6);
+    let maxBeads = 0;
+    for (let k = 0; k < 6; k++) { this.step(0.5); let n = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.isLiquid(P.mat[i]) && Math.hypot(P.x[i], P.y[i]) < 3) n++; maxBeads = Math.max(maxBeads, n); }
+    const bi = W.wounds.punct[0].bead, r = bi >= 0 && P.alive[bi] ? P.r[bi] : 0;
+    this.ok('bead_wells', maxBeads <= 2 && r > 0.15 && P.onSkin[bi], { maxBeads, r: +r.toFixed(3) });
+  }
+  // 25. Furmidge pinning: on the cheek a small bead holds, a big one lets go and runs downhill leaving a wet trail
+  //     (and shrinking as it goes); on the flat-lying back the same big bead stays put
+  {
+    const run = async (area, r) => {
+      await this.setup(area, [], { zoom: 1 });
+      const V = (4 / 3) * Math.PI * r ** 3, i = P.well(-1, 0, 0, W.visH(0, 0), V, PP.MAT.blood, null, 0.3);
+      this.step(1.5); return { dy: P.alive[i] ? P.y[i] : -99, r: P.alive[i] ? P.r[i] : 0 };
+    };
+    const small = await run('cheek', 0.9), big = await run('cheek', 1.8), back = await run('back', 1.8);
+    this.ok('bead_runs', Math.abs(small.dy) < 0.3 && big.dy < -3 && big.r < 1.8 && Math.abs(back.dy) < 0.3,
+      { smallMoved: +small.dy.toFixed(2), bigMoved: +big.dy.toFixed(2), bigR: +big.r.toFixed(2), backMoved: +back.dy.toFixed(2) });
+  }
+  // 26. one liquid surface: a bead is drawn as a thickness field (cap profile with a meniscus), not a sphere object
+  {
+    await this.setup('back', [], { zoom: 2 });
+    const i = P.well(-1, 0, 0, W.visH(0, 0), (4 / 3) * Math.PI, PP.MAT.blood, null, 0.3);   // r = 1 mm
+    this.step(0.05); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, C = W.cam, rt = R.rt.fluid;
+    const rd = (x) => { gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fb); const px = new Float32Array(4);
+      gl.readPixels(Math.round(((x - C.x) / C.vw + 0.5) * rt.w), Math.round(((P.y[i] - C.y) / C.vh + 0.5) * rt.h), 1, 1, gl.RGBA, gl.FLOAT, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px; };
+    const c0 = rd(P.x[i]), mid = rd(P.x[i] + 0.75), out = rd(P.x[i] + 2.2);
+    this.ok('fluid_continuous', c0[0] > 0.6 && c0[0] < 1.15 && mid[0] > 0.1 && mid[0] < c0[0] && out[0] < 0.02 && c0[1] / c0[0] > 0.95 && R.lastInst - T.nPrim === 0,
+      { centre: +c0[0].toFixed(3), mid: +mid[0].toFixed(3), outside: +out[0].toFixed(4), bloodFrac: +(c0[1] / Math.max(c0[0], 1e-6)).toFixed(2), sphereObjects: R.lastInst - T.nPrim });
+  }
+  // 27. clotting and drying: shed blood gels after the bleeding time; a 10 min time-lapse dries the wet film
+  {
+    await this.setup('cheek', [], { zoom: 2 });
+    const i = P.well(-1, 0, 0, W.visH(0, 0), 0.5, PP.MAT.blood, null, 0.3);
+    const c0 = P.clotOf(i); P.age[i] = 400; const c1 = P.clotOf(i);
+    W.decals.paint(3, 3, 1.5, 'blood', 1); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, s0 = W.area.size;
+    const film = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, R.film.fb); const px = new Uint8Array(4); gl.readPixels(Math.round((3 / s0 + 0.5) * 1023), Math.round((3 / s0 + 0.5) * 1023), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px; };
+    const f0 = film(); W.timelapse(600); W.render.render(1 / 60, true); const f1 = film();
+    this.ok('blood_dries', c0 < 0.05 && c1 > 0.8 && f0[2] > 100 && f1[2] < f0[2] * 0.2 && f1[0] > 60, { clotFresh: +c0.toFixed(2), clotOld: +c1.toFixed(2), wetBefore: f0[2], wetAfter: f1[2], stain: f1[0] });
+  }
+  // 28. the new lesions behave as they should
+  {
+    const out = {};
+    // abscess: a #15 incision releases a gush at once (tense), then squeezing drains it; loculations slow it until broken
+    let [Ab] = await this.setup('back', [['abscess', 0, 0, 24]], { zoom: 0.6 });
+    this.drag('blade15', -8, 0, 8, 0, 0.5); this.drag('blade15', -8, 0, 8, 0, 0.5); this.drag('blade15', -8, 0, 8, 0, 0.5);
+    out.abscessGush = Ab.events.includes('gush');
+    this.hold('fingers', 0, 0, 4, { spread: 17 }); out.abscessExt = +(Ab.ext / Ab.V0).toFixed(2);
+    // inflamed cyst: no sac; cheesy keratin plus bloody pus
+    let [Ic] = await this.setup('back', [['inflamedCyst', 0, 0, 14]], { zoom: 1 });
+    this.drag('blade11', 0, -1.2, 0, 1.3, 0.25); this.hold('fingers', 0, 0, 6, { spread: 10 });
+    let ker = 0, bloody = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i]) { if (P.mat[i] === PP.MAT.keratin) ker++; if (P.isLiquid(P.mat[i]) && P.fb[i] > 0.1) bloody++; }
+    out.cyst = { sac: Ic.sac, keratin: ker, bloody };
+    // friction blister: a needle at the edge drains it and the roof stays (deflates)
+    let [Bl] = await this.setup('shoulder' in PP.AREAS ? 'shoulder' : 'back', [['blister', 0, 0, 10]], { zoom: 1.4 });
+    this.hold('needle', 4.4, 0, 0.05); this.step(6);
+    out.blister = { opened: Bl.open.r > 0, fill: +Bl.fill().toFixed(2), flap: Bl.flapAng != null };
+    // a #15 across a blister splits the roof into flaps
+    let [Bf] = await this.setup('back', [['blister', 0, 0, 10]], { zoom: 1.4 }); this.drag('blade15', -6, 0, 6, 0, 0.4);
+    out.flaps = Bf.flapAng != null;
+    // gouty tophus: chalk extrudes
+    let [To] = await this.setup('cheek', [['tophus', 0, 0, 6]], { zoom: 2 }); this.drag('blade11', 0, -0.6, 0, 0.7, 0.2); this.hold('fingers', 0, 0, 4, { spread: 6.5 });
+    let chalk = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.mat[i] === PP.MAT.chalk) chalk++;
+    out.tophusChalk = chalk;
+    // clusters: Favre-Racouchot comedones and folliculitis come in tight groups
+    const g1 = W.genLesions(Object.assign({}, PP.AREAS.cheek, { mix: [['solarComedone', 7, { cluster: 12 }]] }), PP.rng(5));
+    const g2 = W.genLesions(Object.assign({}, PP.AREAS.beard, { mix: [['folliculitis', 7, { cluster: 16 }]] }), PP.rng(6));
+    const spreadOf = (g) => { let m = 0; for (const a of g) for (const b of g) m = Math.max(m, Math.hypot(a.x - b.x, a.y - b.y)); return m; };
+    out.clusters = { favre: g1.length, favreSpread: +spreadOf(g1).toFixed(1), folli: g2.length, folliSpread: +spreadOf(g2).toFixed(1) };
+    this.ok('new_lesions', out.abscessGush && out.abscessExt > 0.25 && out.cyst.sac === null && out.cyst.keratin > 0 && out.cyst.bloody > 0
+      && out.blister.opened && out.blister.fill < 0.5 && !out.blister.flap && out.flaps && out.tophusChalk > 0
+      && g1.length >= 5 && spreadOf(g1) < 15 && g2.length >= 5 && spreadOf(g2) < 19, out);
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -476,6 +554,14 @@ PP.Tests.prototype.visual = async function (name) {
     if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
     else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
     if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
+  } else if (name === 'newles') {
+    await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
+  } else if (name === 'clusters') {
+    await this.setup(PP.params.get('area') || 'cheek', [], { zoom: +(PP.params.get('zoom') || 1.2) });
+    const t = PP.params.get('les') || 'solarComedone';
+    W.lesions = W.genLesions(Object.assign({}, W.area, { mix: [[t, +(PP.params.get('n') || 7), { cluster: +(PP.params.get('c') || 12) }]] }), PP.rng(+(PP.params.get('seed') || 3)));
+    const cx = W.lesions.reduce((s2, L) => s2 + L.x, 0) / Math.max(1, W.lesions.length), cy = W.lesions.reduce((s2, L) => s2 + L.y, 0) / Math.max(1, W.lesions.length);
+    W.cam.x = W.cam.tx = cx; W.cam.y = W.cam.ty = cy; W.fx.patchChanged();
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];

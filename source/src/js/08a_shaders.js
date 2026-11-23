@@ -252,6 +252,28 @@ void main(){
   o=vec4(v, min(debt,1.0), irr, br);
 }`;
 
+/* liquids on the skin (screen-space fluid, after van der Laan et al. 2009): every bead is a spherical cap with a
+   ~70 deg contact angle (base radius 1.485 r, height 1.04 r for the bead's volume). Footprints add up into one
+   thickness + composition field, so touching beads read as one liquid with menisci, not a cluster of balls. */
+PP.SH.splatVS = PP.SH.common + `
+layout(location=0) in vec2 aQ; layout(location=1) in vec4 iA; layout(location=2) in vec4 iB;
+out vec2 vL; flat out vec4 fA; flat out vec4 fB;
+void main(){ fA=iA; fB=iB; vL=aQ*1.16; vec2 w=iA.xy+aQ*iA.z*1.16; gl_Position=vec4(uvOf(w)*2.0-1.0, 0.0, 1.0); }`;
+PP.SH.splatFS = `
+in vec2 vL; flat in vec4 fA; flat in vec4 fB; out vec4 o;
+void main(){
+  // contact lines pin on skin texture: each bead's footprint is a little irregular (stable per bead)
+  float th=atan(vL.y,vL.x), sd=fB.w;
+  float wob=1.0+0.07*sin(th*3.0+sd*17.0)+0.05*sin(th*5.0+sd*29.0)+0.03*sin(th*7.0+sd*41.0);
+  float a=fA.z*wob, h=fA.w, d=length(vL)*fA.z; if(d>=a) discard;
+  float Rs=a*1.0642;                       // a / sin(70 deg)
+  float t=max(sqrt(max(Rs*Rs-d*d,0.0))-(Rs-h), 0.0);
+  o=vec4(t, t*fB.x, t*fB.y, t*fB.z);       // thickness, blood, pus, clot (x thickness)
+}`;
+PP.SH.fblurFS = `
+in vec2 vUv; out vec4 o; uniform sampler2D uT; uniform vec2 uDir;
+void main(){ vec4 s=vec4(0.0); float w=0.0; for(int k=-4;k<=4;k++){ float g=exp(-float(k*k)/8.0); s+=texture(uT, vUv+uDir*float(k))*g; w+=g; } o=s/w; }`;
+
 /* brush painting into world-space decal textures */
 PP.SH.brushVS = PP.SH.common + `
 layout(location=0) in vec2 aQ; layout(location=1) in vec4 iA; layout(location=2) in vec4 iB;
@@ -283,6 +305,7 @@ uniform float uBloodOn;
 uniform int uDbg;
 uniform int uHasObj;
 uniform float uDetK;
+uniform sampler2D uFluid; uniform int uHasFluid; uniform float uBloodAge;
 
 vec3 shEval(vec3 n){
   float x=n.x,y=n.y,z=n.z;
@@ -350,7 +373,7 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   int vis=int(b.x+0.5); float infl=b.y, headR=b.z, openR=b.w;
   float deflate=d.y, crater=d.z, punct=d.w, seed=e.x, point=e.y, hema=e.z, ext2=e.w;
   float pn=f.x;   // squeezing pressure, normalised
-  float k = (vis==18)?1.0:(vis>=15&&vis<=17)?1.25:(vis==13||vis==9||vis==10||vis==11)?1.35:1.7;
+  float k = (vis==18)?1.0:(vis>=15&&vis<=17)?1.25:(vis==13||vis==9||vis==10||vis==11||vis==21||vis==22)?1.35:(vis==23||vis==24)?0.6:(vis==25||vis==26)?1.5:1.7;
   float dome = domeP(r,R,k) + (r<R?0.0:0.0);
   float h = H*dome;
   // pores and comedones are depressions
@@ -382,7 +405,7 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   else if(vis==4){ float m=1.0-smoothstep(0.12,0.22,r); cm=m*(1.0-ext2); cc=vec3(0.06,0.045,0.035);
     float th=atan(q.y,q.x); float sp=pow(abs(sin(th*4.5+seed*9.0)),40.0)*(1.0-smoothstep(0.2,0.55,r))*step(0.12,r); cm=max(cm,sp*0.8*(1.0-ext2)); }
   else if(vis==6){ float m=1.0-smoothstep(R*0.7,R*0.92,r); cm=min(1.0,0.88+0.1*pn)*m*(1.0-ext2); cc=vec3(0.96,0.95,0.92); o.gloss=max(o.gloss,0.8*m); }
-  else if(vis==7||vis==8||vis==19){
+  else if(vis==7||vis==8||vis==19||vis==27){
     float m=1.0-smoothstep(headR*0.72, headR*1.02, r);
     float core=1.0-smoothstep(0.0, headR*0.8, r);
     cc = mix(c.rgb*vec3(1.02,1.0,0.94), c.rgb*vec3(1.05,0.97,0.78), core) * (0.92+0.16*vnoise(q*22.0+seed*40.0));
@@ -396,6 +419,27 @@ void lesion(int i, vec2 X, bool full, inout LO o){
     cm=0.85*m*point*(1.0-deflate*0.5)*c.a; o.deox += infl*0.25*halo;
   }
   else if(vis==11){ o.deox += 0.45*halo*infl; cm=0.25*dome*c.a; }
+  // abscess: red, hot, tense dome, no head; a yellow hint shows through the thinnest part when pressed
+  else if(vis==21){ o.deox += 0.35*halo*infl; cc=vec3(0.92,0.8,0.48); cm=(0.06+0.2*clamp(pn,0.0,1.0))*dome*dome*c.a; o.gloss=max(o.gloss,0.45*dome); }
+  // inflamed (ruptured) cyst: red and boggy around a dark punctum
+  else if(vis==22){ o.deox += 0.3*halo*infl; float pm=1.0-smoothstep(punct*0.6,punct*1.3,r); cc=mix(vec3(0.86,0.8,0.62), vec3(0.08,0.06,0.05), pm); cm=max(0.1*dome*c.a, pm*0.85); }
+  // blisters: a tense translucent roof over straw serum or dark blood, whiter where the epidermis lifts at the rim
+  else if(vis==23||vis==24){
+    float rim=exp(-pow((r-R*0.9)/(R*0.08),2.0));
+    vec3 fl2 = vis==23 ? vec3(0.95,0.88,0.62) : vec3(0.075,0.006,0.02);   // straw serum / dark maroon blood under the roof
+    cc = mix(fl2, vec3(0.96,0.94,0.9), rim*(vis==23?0.6:0.3)); cm = (vis==23?0.42:0.94)*dome*(1.0-deflate) + rim*0.25*(1.0-deflate*0.5);
+    o.gloss=max(o.gloss, 0.9*dome*(1.0-deflate));
+    // cut across with a #15: the roof splits into flaps that fold back as it empties; the moist pink base shows
+    if(f.w>0.5){ float ang=f.w-4.0; vec2 qa=vec2(cos(ang)*q.x+sin(ang)*q.y, -sin(ang)*q.x+cos(ang)*q.y);
+      float op=R*(0.12+0.3*deflate), inside=1.0-smoothstep(R*0.9,R*0.98,r);
+      float band=(1.0-smoothstep(op, op+0.08, abs(qa.y)))*inside;
+      cc=mix(cc, vec3(0.83,0.42,0.4), band); cm=max(cm, band*0.95); o.wet=max(o.wet, band*0.7);
+      float edge=exp(-pow((abs(qa.y)-op)/0.07,2.0))*inside; cc=mix(cc, vec3(0.93,0.9,0.85), edge*0.7); cm=max(cm, edge*0.6); }
+  }
+  // chalky deposits: gritty white (urate in a tophus is creamier, with a little crust)
+  else if(vis==25||vis==26){ float m=1.0-smoothstep(R*0.25,R*0.85,r); float grit=0.85+0.3*hash12(floor(q*28.0+seed*50.0));
+    cc=(vis==25?vec3(0.95,0.9,0.74):vec3(0.97,0.96,0.92))*grit; cm=(vis==25?0.55:0.65)*m*dome*c.a;
+    if(vis==25){ float crust=smoothstep(0.55,0.8,vnoise(q*5.0+seed*9.0))*m; cc=mix(cc, vec3(0.62,0.45,0.3), crust*0.5); } }
   else if(vis==13){ o.deox += 0.3*halo*infl; }
   else if(vis==14){ float th=atan(q.y,q.x); float lob=0.5+0.5*cos(th*6.0+seed*10.0); cm=0.5*dome*(0.55+0.45*lob)*smoothstep(R*0.12,R*0.3,r); cc=vec3(0.93,0.83,0.55);
     float tel = pow(abs(sin(th*5.0+seed*3.0+r*3.0)),60.0)*(1.0-smoothstep(R*0.5,R*1.3,r)); o.hem += tel*0.8; }
@@ -412,6 +456,10 @@ void lesion(int i, vec2 X, bool full, inout LO o){
     vec3 hairC=mix(vec3(0.16,0.12,0.11), vec3(0.32,0.27,0.27), 0.5+0.5*t);
     cc=mix(cc, hairC, hm); cm=max(cm, hm*mix(0.7,0.35,t));
   }
+  if(vis==27){ // folliculitis: a straight hair shaft emerging through the centre of the pustule
+    float ang=seed*6.2831853; vec2 hd=vec2(cos(ang),sin(ang)); float along=dot(q,hd), across=dot(q,vec2(-hd.y,hd.x));
+    float len=R*1.6+0.8; float hm=(1.0-smoothstep(0.016,0.032,abs(across)))*step(-0.05,along)*(1.0-smoothstep(len*0.8,len,along));
+    cc=mix(cc, vec3(0.06,0.045,0.035), hm); cm=max(cm, hm*0.95); }
   if(openR>0.0 && vis!=0 && vis!=3 && vis!=5 && vis!=4){ float hole=1.0-smoothstep(openR*0.5, openR*1.1, r); cc=mix(cc, vec3(0.32,0.06,0.04), hole*0.7); cm=max(cm, hole*0.85); o.wet=max(o.wet,hole); }
   if(crater>0.0){ float cr=exp(-r*r/(R*R*0.18)); o.hem += crater*cr*1.5; o.wet=max(o.wet,cr*0.6); if(vis==9||vis==10){ cc=mix(cc,vec3(0.62,0.6,0.46),cr); cm=max(cm,cr*0.8);} }
   if(hema>0.0){ o.deox += hema*4.0*dome; }
@@ -529,7 +577,8 @@ void main(){
       vec3 lc = wLay.x<1.5 ? mix(vec3(0.95,0.93,0.88), vec3(0.9,0.85,0.7), smoothstep(wLay.y+0.2, wLay.y+0.6, wd)*wLay.z)
               : wLay.x<2.5 ? mix(vec3(0.62,0.12,0.08), vec3(0.88,0.8,0.5), wLay.z)
               : wLay.x<3.5 ? vec3(0.96,0.82,0.36)*(0.85+0.3*vnoise(p*5.0))
-              : vec3(0.97,0.96,0.92)*(0.88+0.2*hash12(floor(p*30.0)));
+              : wLay.x<4.5 ? vec3(0.97,0.96,0.92)*(0.88+0.2*hash12(floor(p*30.0)))
+              : vec3(0.84,0.45,0.42);
       wc = mix(wc, lc, lay);
     }
     wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*clamp(0.55+0.4*(1.0-film.r*0.0),0.0,1.0)*smoothstep(0.1,0.6,wd));
@@ -541,7 +590,8 @@ void main(){
   // pus residue + blood film (wet = glossy bright red, dry = dark brown)
   alb = mix(alb, vec3(0.86,0.78,0.5), clamp(film.g,0.0,1.0)*0.55);
   float wetness = clamp(film.b,0.0,1.0);
-  vec3 bloodC = mix(vec3(0.16,0.03,0.02), vec3(0.42,0.02,0.02), wetness);
+  float oxy = 0.39*exp(-uBloodAge/0.64) + 0.61*exp(-uBloodAge/66.7);
+  vec3 bloodC = mix(mix(vec3(0.11,0.05,0.03), vec3(0.24,0.035,0.025), oxy), vec3(0.42,0.02,0.02), wetness);
   alb = mix(alb, bloodC, clamp(film.r*1.2,0.0,0.92)*uBloodOn);
   // hydrocolloid patches
   float patchM=0.0; float patchAge=0.0;
@@ -555,6 +605,30 @@ void main(){
     alb=mix(alb, vec3(0.05,0.04,0.035), hairM*0.85);
     alb=mix(alb, alb*vec3(0.75,0.78,0.85), (1.0-smoothstep(0.06,0.14,hr))*0.35);
   }
+  // ---- liquid on the skin: blood / pus / serum as one layer of real thickness
+  float LT=0.0, lcov=0.0, lclot=0.0; vec3 lTr=vec3(1.0), lBody=vec3(0.0), Nl=N;
+  if(uHasFluid==1){
+    vec4 fl=texS(uFluid, vUv); LT=fl.x;
+    if(LT>0.002){
+      vec2 tx=vec2(2.0/uRes.x,0.0), ty=vec2(0.0,2.0/uRes.y);
+      float lgx=(texS(uFluid,vUv+tx).x-texS(uFluid,vUv-tx).x)/(2.0*tx.x*uView.x);
+      float lgy=(texS(uFluid,vUv+ty).x-texS(uFluid,vUv-ty).x)/(2.0*ty.y*uView.y);
+      // a liquid levels out over fine relief (cut edges, pores): thicker pools follow only the broad shape below
+      float lev=smoothstep(0.02,0.15,LT);
+      Nl=normalize(vec3(-((gDef+gL)*(1.0-0.85*lev)+vec2(lgx,lgy)),1.0));
+      float fb=clamp(fl.y/LT,0.0,1.0), fp=clamp(fl.z/LT,0.0,1.0-fb), fc=1.0-fb-fp; lclot=clamp(fl.w/LT,0.0,1.0);
+      lcov=smoothstep(0.003,0.02,LT);
+      // absorption per mm: whole blood from oxyhaemoglobin spectra (Prahl/OMLC, Hb ~150 g/L): thin = bright
+      // translucent red, thick = deep red; straw serum; creamy, strongly scattering pus
+      vec3 sig=fb*vec3(0.3,28.0,33.0)*(1.0+0.6*lclot) + fp*vec3(1.2,2.2,6.5) + fc*vec3(0.03,0.08,0.45);
+      // whole blood is turbid (red cells scatter): beyond ~0.1 mm it hides the skin and shows its own deep crimson;
+      // only thin films stay translucent bright red. Pus is opaque cream; serum stays clear.
+      float pusOp=1.0-exp(-fp*LT*14.0), bloodOp=1.0-exp(-fb*LT*9.0);
+      lTr=exp(-sig*2.0*LT)*(1.0-pusOp)*(1.0-0.92*bloodOp);
+      lBody=pusOp*vec3(0.85,0.76,0.48) + bloodOp*mix(vec3(0.16,0.006,0.008), vec3(0.065,0.01,0.008), lclot);
+    }
+  }
+  alb = mix(alb, alb*lTr, lcov);
   // ---- lighting
   vec3 Ne = toEnv(N);
   vec3 Lk0 = normalize(uKey);
@@ -587,7 +661,15 @@ void main(){
   spec += (0.5*keySpec(N,Lk0,0.45,0.028) + oil*0.9*keySpec(N,Lk0,0.24,0.028) + wet*1.2*keySpec(N,Lk0,0.09,0.02) + lo.gloss*1.6*keySpec(N,Lk0,0.11,0.03))*0.55*(1.0-sh2);
   spec += lo.gloss*0.8*F*envSpec(R,0.1)*uExposure*0.6;
   spec *= mix(1.0,0.45,sh2)*ao;
-  float skinH = H;
+  if(lcov>0.0){
+    // the liquid surface: its own meniscus normal, a glassy wet highlight (dull once clotted), and light its body scatters back
+    vec3 Rl=reflect(-V,Nl); float nvl=max(Nl.z,1e-3);
+    float Fl=0.02+0.98*pow(1.0-nvl,5.0), rl=mix(0.035,0.3,lclot);
+    vec3 specL=Fl*envSpec(Rl,rl)*uExposure*0.78 + keySpec(Nl,Lk0,max(rl,0.05),0.02)*0.55*(1.0-sh2);
+    vec3 irrL=0.42*shEval(toEnv(Nl))*uExposure + 0.86*vec3(1.0,0.98,0.95)*max(0.0,dot(Nl,Lk0))*(1.0-sh2);
+    spec = mix(spec, specL, lcov) + lBody*irrL*lcov;
+  }
+  float skinH = H + LT;
   // patch: semi-transparent film over everything
   if(patchM>0.0){ float whiten=clamp(patchAge,0.0,1.0); alb=mix(alb, mix(vec3(0.82,0.66,0.52), vec3(0.93,0.9,0.86), whiten), patchM*(0.45+0.5*whiten)); spec += patchM*0.03*envSpec(R,0.12); }
 
@@ -601,7 +683,7 @@ void main(){
     vec3 n2 = vec3(ob.zw, sqrt(max(0.0,1.0-dot(ob.zw,ob.zw))));
     // procedural surface detail per material
     vec2 wp = p*vec2(1.0);
-    if(mat==6||mat==9||mat==13) n2 = normalize(n2 + vec3(vnoise(wp*7.0)-0.5, vnoise(wp*7.0+5.0)-0.5, 0.0)*1.1 + vec3(vnoise(wp*19.0)-0.5, vnoise(wp*19.0+2.0)-0.5, 0.0)*0.5);
+    if(mat==6||mat==9||mat==13||mat==18) n2 = normalize(n2 + vec3(vnoise(wp*7.0)-0.5, vnoise(wp*7.0+5.0)-0.5, 0.0)*1.1 + vec3(vnoise(wp*19.0)-0.5, vnoise(wp*19.0+2.0)-0.5, 0.0)*0.5);
     if(mat==8) n2 = normalize(n2 + vec3(vnoise(wp*3.0)-0.5, vnoise(wp*3.0+3.0)-0.5, 0.0)*0.35);
     if(mat==31||mat==35) n2 = normalize(n2 + vec3(vnoise(wp*14.0)-0.5, vnoise(wp*14.0+2.0)-0.5,0.0)*0.9);
     vec3 n2e = toEnv(n2);
@@ -611,7 +693,7 @@ void main(){
     if(mat==6) base *= 0.86 + 0.22*vnoise(wp*5.0);
     if(mat==1){ rough=0.22; } else if(mat==2||mat==15){ rough=0.1; trans=0.35; } else if(mat==3){ rough=0.05; trans=0.85; base=vec3(0.95,0.9,0.7); }
     else if(mat==4){ rough=0.04; trans=1.0; } else if(mat==7){ rough=0.06; trans=0.6; }
-    else if(mat==5){ rough=0.35; } else if(mat==6){ rough=0.7; } else if(mat==8){ rough=0.18; }
+    else if(mat==5){ rough=0.35; } else if(mat==6){ rough=0.7; } else if(mat==18){ rough=0.93; base*=0.9+0.14*vnoise(wp*30.0); } else if(mat==8){ rough=0.18; }
     else if(mat==9){ rough=0.6; } else if(mat==10){ rough=0.28; } else if(mat==11){ rough=0.14; trans=0.3; } else if(mat==12){ rough=0.18; }
     else if(mat==13){ rough=0.5; } else if(mat==14){ rough=0.9; }
     else if(mat==30){ rough=mix(0.48,0.16,oc.a); trans=0.62; } else if(mat==31){ rough=0.95; } else if(mat==32){ rough=0.12; metal=1.0; f0=0.85; }

@@ -4,6 +4,18 @@
    assumptions tuned so the sourced qualitative behaviour holds (see tests). */
 
 PP.SRC = {
+  msdAbscess: ['MSD Manual: Cutaneous abscess', 'https://www.msdmanuals.com/professional/dermatologic-disorders/bacterial-skin-infections/cutaneous-abscess'],
+  lsuID: ['LSU Procedure Manual: Incision and drainage', 'https://www.medschool.lsuhsc.edu/medical_education/undergraduate/csi/Procedure%20Manual/I&D.html'],
+  dermnetEpi2: ['DermNet: Epidermoid cyst', 'https://dermnetnz.org/topics/epidermoid-cyst'],
+  dermnetBlister: ['DermNet: Blistering skin conditions', 'https://dermnetnz.org/topics/blistering-skin-conditions'],
+  aafpTophus: ['AAFP 2021: Firm nodule on the ear (gouty tophus)', 'https://www.aafp.org/pubs/afp/issues/2021/1100/p521.html'],
+  pcdsTophi: ['PCDS: Gouty tophi', 'https://www.pcds.org.uk/clinical-guidance/gouty-tophi'],
+  dermnetCalcinosis: ['DermNet: Calcinosis cutis', 'https://dermnetnz.org/topics/calcinosis-cutis'],
+  dermnetFavre: ['DermNet: Favre-Racouchot syndrome', 'https://dermnetnz.org/topics/favre-racouchot-syndrome-pathology'],
+  dermnetFolliculitis: ['DermNet: Bacterial folliculitis', 'https://dermnetnz.org/topics/bacterial-folliculitis'],
+  bleedTime: ['StatPearls: Bleeding time', 'https://www.ncbi.nlm.nih.gov/books/NBK537233/'],
+  hbSpectra: ['OMLC: Optical absorption of hemoglobin (Prahl)', 'https://omlc.org/spectra/hemoglobin/'],
+  bloodOptics: ['Bosschaart 2014: Optical properties of whole blood', 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3953607/'],
   dermnetAcne: ['DermNet: Acne vulgaris', 'https://dermnetnz.org/topics/acne-vulgaris'],
   dermnetComedo: ['DermNet: Comedonal acne', 'https://dermnetnz.org/topics/comedonal-acne'],
   msdAcne: ['MSD Manual: Acne vulgaris', 'https://www.msdmanuals.com/professional/dermatologic-disorders/acne-and-related-disorders/acne-vulgaris'],
@@ -54,19 +66,20 @@ PP.TONES = [
 PP.AREAS = {
   cheek: { name: 'Cheek', size: 64, view: 24, set: 'deep', deepSet: 'deep', E: 110, Ld: 8, Heff: 1.4, dermis: 1.2, epi: 0.05,
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.06, hair: 0,
-    mix: [['pustule', 4], ['papule', 2], ['whitehead', 3], ['blackhead', 2], ['milium', 2], ['sebhyper', 1], ['molluscum', 1], ['giant', 1], ['nodule', 1], ['macrocomedone', 1]] },
+    mix: [['pustule', 4], ['papule', 2], ['whitehead', 3], ['blackhead', 2], ['milium', 2], ['sebhyper', 1], ['molluscum', 1], ['giant', 1], ['nodule', 1], ['macrocomedone', 1], ['solarComedone', 6, { cluster: 11 }]] },
   nose: { name: 'Nose', size: 40, view: 16, set: 'nose', deepSet: 'nose', E: 140, Ld: 5, Heff: 1.2, dermis: 1.3, epi: 0.05,
     rstl: 0, s1: 10, s2: 6, grav: [0, -0.85, -0.5], oil: 0.85, red: 0.12, hair: 0,
     mix: [['blackhead', 7], ['filament', 22], ['dpow', 1], ['trichostasis', 2], ['whitehead', 2], ['pustule', 1]] },
   beard: { name: 'Beard & jaw', size: 64, view: 26, set: 'deep', deepSet: 'deep', E: 120, Ld: 8, Heff: 1.5, dermis: 1.4, epi: 0.06,
     rstl: 70, s1: 12, s2: 5, grav: [0, -0.95, -0.3], oil: 0.4, red: 0.08, hair: 1,
-    mix: [['ingrown', 4], ['pustule', 2], ['papule', 2], ['nodule', 1], ['pseudocyst', 1]] },
+    mix: [['ingrown', 4], ['pustule', 2], ['papule', 2], ['nodule', 1], ['pseudocyst', 1], ['folliculitis', 7, { cluster: 16 }]] },
   back: { name: 'Back', size: 150, view: 64, set: 'body', deepSet: 'body', E: 160, Ld: 15, Heff: 2.4, dermis: 1.95, epi: 0.08,
     rstl: 90, s1: 14, s2: 6, grav: [0, 0, -1], oil: 0.5, red: 0.03, hair: 0,
-    mix: [['epidermoid', 1], ['steatocystoma', 2], ['lipoma', 1], ['furuncle', 1], ['carbuncle', 1], ['giant', 1], ['pustule', 3], ['blackhead', 2], ['dpow', 1]] },
+    mix: [['epidermoid', 1], ['steatocystoma', 2], ['lipoma', 1], ['furuncle', 1], ['carbuncle', 1], ['giant', 1], ['pustule', 3], ['blackhead', 2], ['dpow', 1],
+      ['abscess', 1], ['inflamedCyst', 1], ['calcinosis', 1], ['folliculitis', 6, { cluster: 22 }]] },
   scalp: { name: 'Scalp (shaved)', size: 100, view: 42, set: 'body', deepSet: 'body', E: 180, Ld: 6, Heff: 1.6, dermis: 1.8, epi: 0.07,
     rstl: 0, s1: 14, s2: 8, grav: [0, -0.5, -0.86], oil: 0.6, red: 0.05, hair: 2,
-    mix: [['pilar', 2], ['pustule', 2], ['epidermoid', 1], ['furuncle', 1]] },
+    mix: [['pilar', 2], ['pustule', 2], ['epidermoid', 1], ['furuncle', 1], ['folliculitis', 5, { cluster: 20 }]] },
   sandbox: { name: 'Sandbox', size: 80, view: 30, set: 'deep', deepSet: 'deep', E: 110, Ld: 8, Heff: 1.4, dermis: 1.2, epi: 0.05,
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.05, hair: 0, mix: [] },
 };
@@ -74,11 +87,11 @@ PP.AREAS = {
 // How much each dome swells under squeezing pressure (fraction of its height at ~30 kPa): fluid-filled cysts are
 // fluctuant and bulge, pustule and whitehead domes rise, open pores stay flat (their plug rises instead), solid
 // papules, nodules and lobular lesions barely change.
-PP.BULGE = { pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
+PP.BULGE = { abscess: 0.7, inflamedCyst: 0.6, blister: 0.25, bloodBlister: 0.25, tophus: 0.05, calcinosis: 0.03, solarComedone: 0, folliculitis: 0.45, pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
   milium: 0.3, furuncle: 0.5, carbuncle: 0.45, pseudocyst: 0.6, papule: 0.12, nodule: 0.1, sebhyper: 0.05, epidermoid: 0.9,
   pilar: 0.7, steatocystoma: 0.85, lipoma: 0.08, ingrown: 0.4, molluscum: 0.3 };
 // what an incision exposes below the roof: 1 cyst wall + keratin, 2 pus pocket, 3 fat lobules, 4 chalk
-PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
+PP.CUTLAYER = { abscess: 2, inflamedCyst: 1, tophus: 4, calcinosis: 4, blister: 5, bloodBlister: 5, folliculitis: 2, epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
 
 /* Close-ups anywhere on the face/body: the region under the cursor picks a base area (skin mechanics, scan set,
    hair) and a blemish mix typical of that site. Comedones and milia favour the T-zone, temples and the ear's
@@ -87,26 +100,26 @@ PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2,
 PP.SPOTS = {
   cheek: { base: 'cheek', name: 'cheek', size: 56, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['whitehead', 2], ['blackhead', 2], ['milium', 1]] },
   forehead: { base: 'cheek', name: 'Forehead', size: 64, view: 24, rstl: 0, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 2], ['pustule', 1], ['milium', 1]] },
-  temple: { base: 'cheek', name: 'temple', size: 50, view: 20, rstl: 20, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 1], ['milium', 2]] },
+  temple: { base: 'cheek', name: 'temple', size: 50, view: 20, rstl: 20, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 1], ['milium', 2], ['solarComedone', 7, { cluster: 12 }]] },
   chin: { base: 'beard', name: 'Chin', size: 50, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['ingrown', 2], ['whitehead', 1], ['nodule', 1]] },
-  jaw: { base: 'beard', name: 'jaw', size: 56, view: 24, rstl: null, mix: [['ingrown', 3], ['pustule', 2], ['papule', 2], ['nodule', 1]] },
-  ear: { base: 'cheek', name: 'ear', size: 36, view: 15, rstl: 90, mix: [['blackhead', 3], ['whitehead', 2], ['milium', 1], ['pustule', 1]] },
-  neck: { base: 'beard', name: 'Neck', size: 60, view: 26, rstl: 0, mix: [['ingrown', 3], ['pustule', 2], ['papule', 1], ['epidermoid', 1]] },
-  scalp: { base: 'scalp', name: 'scalp', size: 90, view: 40, rstl: null, mix: [['pilar', 1], ['pustule', 2], ['furuncle', 1]] },
-  chest: { base: 'back', name: 'Chest', size: 100, view: 44, rstl: 0, mix: [['papule', 3], ['pustule', 3], ['steatocystoma', 2], ['epidermoid', 1], ['blackhead', 2]] },
-  shoulder: { base: 'back', name: 'shoulder', size: 100, view: 44, rstl: 0, mix: [['pustule', 3], ['papule', 2], ['furuncle', 1], ['epidermoid', 1], ['lipoma', 1]] },
-  upperback: { base: 'back', name: 'upper back', size: 120, view: 52, rstl: 0, mix: [['pustule', 3], ['blackhead', 2], ['epidermoid', 1], ['steatocystoma', 1], ['furuncle', 1]] },
+  jaw: { base: 'beard', name: 'jaw', size: 56, view: 24, rstl: null, mix: [['ingrown', 3], ['pustule', 2], ['papule', 2], ['nodule', 1], ['folliculitis', 5, { cluster: 14 }]] },
+  ear: { base: 'cheek', name: 'ear', size: 36, view: 15, rstl: 90, mix: [['blackhead', 3], ['whitehead', 2], ['milium', 1], ['pustule', 1], ['tophus', 2]] },
+  neck: { base: 'beard', name: 'Neck', size: 60, view: 26, rstl: 0, mix: [['ingrown', 3], ['pustule', 2], ['papule', 1], ['epidermoid', 1], ['inflamedCyst', 1], ['folliculitis', 5, { cluster: 14 }]] },
+  scalp: { base: 'scalp', name: 'scalp', size: 90, view: 40, rstl: null, mix: [['pilar', 1], ['pustule', 2], ['furuncle', 1], ['folliculitis', 5, { cluster: 18 }]] },
+  chest: { base: 'back', name: 'Chest', size: 100, view: 44, rstl: 0, mix: [['papule', 3], ['pustule', 3], ['steatocystoma', 2], ['epidermoid', 1], ['blackhead', 2], ['abscess', 1], ['folliculitis', 5, { cluster: 16 }]] },
+  shoulder: { base: 'back', name: 'shoulder', size: 100, view: 44, rstl: 0, mix: [['pustule', 3], ['papule', 2], ['furuncle', 1], ['epidermoid', 1], ['lipoma', 1], ['abscess', 1], ['blister', 1], ['bloodBlister', 1]] },
+  upperback: { base: 'back', name: 'upper back', size: 120, view: 52, rstl: 0, mix: [['pustule', 3], ['blackhead', 2], ['epidermoid', 1], ['steatocystoma', 1], ['furuncle', 1], ['abscess', 1], ['inflamedCyst', 1], ['calcinosis', 1]] },
 };
 
 /* Contents materials (particle mat ids). rheo: liquid (Newtonian, Poiseuille), paste (Bingham), plug (rigid sliding),
    pearl (rigid ball), lobule (soft solid), core (cohesive chain), hair (elastic rod), sac (membrane chain). */
 PP.MAT = {
   pus: 1, pusThin: 2, serum: 3, blood: 4, sebum: 5, keratin: 6, oil: 7, fat: 8, core: 9, hair: 10, sac: 11, pearl: 12,
-  molluscum: 13, packing: 14, bloodyPus: 15, iodine: 16, lido: 17,
+  molluscum: 13, packing: 14, bloodyPus: 15, iodine: 16, lido: 17, chalk: 18,
 };
 PP.MATCOL = { // sRGB base colours
   1: '#e9dba4', 2: '#e6d79a', 3: '#e9d9a8', 4: '#5e0f0c', 5: '#e8d8a8', 6: '#e7dfc8', 7: '#e3c56a', 8: '#e8c84f',
-  9: '#c9c16a', 10: '#2a1d16', 11: '#efe6dc', 12: '#f4f1ea', 13: '#efece2', 14: '#f2efe8', 15: '#d39a7c',
+  9: '#c9c16a', 10: '#2a1d16', 11: '#efe6dc', 12: '#f4f1ea', 13: '#efece2', 14: '#f2efe8', 15: '#d39a7c', 18: '#f2efe6',
 };
 
 /* Lesion types. d: dome diameter range (mm). depth: cavity centre depth (mm). cav: cavity radius / dome radius.
@@ -206,6 +219,46 @@ PP.LTYPES = {
     open: 'umbil', openR: 0.12, contents: [{ m: 13, k: 'core', f: 1 }],
     desc: 'A pearly umbilicated papule with an expressible white cheesy core. Picking it spreads it to nearby skin.',
     src: ['molluscum'], hint: 'Curette, or needle plus a gentle squeeze. Not fingers.', protocol: ['curette'] },
+  abscess: { name: 'Abscess', vis: 21, group: 'Deep pus', d: [15, 35], hf: 0.26, depth: 3.5, cav: 0.62, roofT: 1.6, wallT: 0.7, roofS: 300, wallS: 160, pockets: 3,
+    open: 'closed', contents: [{ m: 2, k: 'liquid', f: 0.72, mu: 60 }, { m: 15, k: 'liquid', f: 0.28, mu: 25 }],
+    desc: 'A walled-off pocket of pus 1-3 cm across in the dermis or fat: red, hot, tender and fluctuant, usually without a head, often divided into loculations.',
+    src: ['msdAbscess', 'lsuID', 'pus'], hint: 'Lidocaine, then a #15 incision along the tension lines across the fluctuant area. Express, then break the loculations with the hemostat; packing is optional.',
+    protocol: ['lido', 'blade15', 'squeeze', 'hemostat', 'gauze'] },
+  inflamedCyst: { name: 'Inflamed epidermoid cyst', vis: 22, group: 'Cyst', d: [10, 25], hf: 0.34, depth: 2.4, cav: 0.6, roofT: 0.7, wallT: 0.02, roofS: 900, wallS: 260,
+    open: 'punctum', openR: 0.16, contents: [{ m: 15, k: 'liquid', f: 0.25, mu: 40 }, { m: 6, k: 'paste', f: 0.55, ty: 0.8, mu: 2e4 }, { m: 2, k: 'liquid', f: 0.2, mu: 30 }],
+    desc: 'An epidermoid cyst whose wall has ruptured into the dermis: red, boggy and tender. Cheesy keratin comes out mixed with pus and blood, and there is no intact sac left to deliver.',
+    src: ['dermnetEpi2', 'aafpCyst'], hint: 'Ideally let it settle first. Otherwise lidocaine and a #11 stab, express the cheesy keratin and pus; the remnant is excised once it is calm.',
+    protocol: ['lido', 'blade11', 'squeeze', 'gauze'] },
+  blister: { name: 'Friction blister', vis: 23, group: 'Blister', d: [5, 15], hf: 0.42, depth: 0.08, cav: 0.95, roofT: 0.1, wallT: 0.6, roofS: 420, wallS: 4000,
+    open: 'closed', contents: [{ m: 3, k: 'liquid', f: 1, mu: 2 }],
+    desc: 'Shear split the epidermis and clear straw-coloured serum filled the gap. The thin roof protects the raw base beneath it.',
+    src: ['dermnetBlister'], hint: 'Sterile needle at the edge, let it drain, and keep the roof on as a natural dressing. Cutting the roof off exposes the raw base.',
+    protocol: ['iodine', 'needle', 'gauze'] },
+  bloodBlister: { name: 'Blood blister', vis: 24, group: 'Blister', d: [3, 12], hf: 0.4, depth: 0.08, cav: 0.95, roofT: 0.1, wallT: 0.6, roofS: 460, wallS: 4000,
+    open: 'closed', contents: [{ m: 4, k: 'liquid', f: 1, mu: 8 }],
+    desc: 'A pinch or crush broke small vessels under a split epidermis, so the blister filled with blood, part of it already dark and clotting.',
+    src: ['dermnetBlister'], hint: 'Best left alone; if it is tense and painful, a sterile needle at the edge drains it. Keep the roof on.',
+    protocol: ['iodine', 'needle', 'gauze'] },
+  tophus: { name: 'Gouty tophus', vis: 25, group: 'Chalky', d: [2, 8], hf: 0.34, depth: 0.6, cav: 0.62, roofT: 0.25, wallT: 0.3, roofS: 2600, wallS: 2600,
+    open: 'closed', contents: [{ m: 18, k: 'paste', f: 1, ty: 6, mu: 1e6 }],
+    desc: 'A firm, usually painless deposit of urate crystals under thin skin, often on the rim of the ear. It can perforate and discharge chalky white material.',
+    src: ['aafpTophus', 'pcdsTophi'], hint: 'Not a pimple: the gout needs treating. Opened with a #11 nick, gentle pressure extrudes gritty white paste.',
+    protocol: ['blade11', 'squeeze', 'gauze'] },
+  calcinosis: { name: 'Calcinosis cutis', vis: 26, group: 'Chalky', d: [2, 10], hf: 0.3, depth: 0.8, cav: 0.6, roofT: 0.3, wallT: 0.35, roofS: 2800, wallS: 2800,
+    open: 'closed', contents: [{ m: 18, k: 'paste', f: 1, ty: 9, mu: 2e6 }],
+    desc: 'Calcium salts deposited in the skin, here in an old scar: a hard white nodule that can discharge gritty chalk through a small ulcer.',
+    src: ['dermnetCalcinosis'], hint: 'Small deposits can be shelled out through a #11 nick and squeezed; surgery can provoke more (DermNet).',
+    protocol: ['lido', 'blade11', 'squeeze', 'gauze'] },
+  solarComedone: { name: 'Solar comedone (Favre-Racouchot)', vis: 0, group: 'Plug', d: [1.4, 3.2], hf: 0.04, depth: 1.1, cav: 0.55, roofT: 0, wallT: 0.06, roofS: 0, wallS: 800,
+    open: 'open', openR: 0.42, plugL: [1.6, 3.0], contents: [{ m: 5, k: 'plug', f: 1, tip: 1 }],
+    desc: 'Large open comedones packed together on sun-damaged skin around the temples and eyes, with small cysts between them (nodular elastosis with cysts and comedones).',
+    src: ['dermnetFavre'], hint: 'Warm compress, then the comedone loop one plug at a time. Sun protection and not smoking prevent new ones.',
+    protocol: ['compress', 'loop'] },
+  folliculitis: { name: 'Folliculitis pustule', vis: 27, group: 'Pus', d: [1.0, 2.6], hf: 0.38, depth: 0.25, cav: 0.5, roofT: 0.04, wallT: 0.05, roofS: 250, wallS: 520,
+    open: 'closed', contents: [{ m: 1, k: 'paste', f: 0.8, ty: 0.2, mu: 2e5 }, { m: 3, k: 'liquid', f: 0.2, mu: 30 }],
+    desc: 'An inflamed hair follicle: a small pustule pierced by a hair, usually in groups where hair is shaved or rubbed.',
+    src: ['dermnetFolliculitis'], hint: 'Usually settles with hygiene and not shaving over it. A sterile needle at the head drains it; leave the hair.',
+    protocol: ['needle', 'squeeze'] },
 };
 
 PP.TOOLS = [
@@ -259,3 +312,5 @@ PP.CREDITS = [
 ];
 // attach the per-type swelling once the lesion types exist
 for (const [k, v] of Object.entries(PP.BULGE)) if (PP.LTYPES[k]) PP.LTYPES[k].bulge = v;
+// built-in tension (kPa): tense boils, abscesses and blisters push contents out as soon as they are opened
+PP.TENSE = { giant: 5, furuncle: 3, carbuncle: 3, pseudocyst: 2, abscess: 4, blister: 3.5, bloodBlister: 3, inflamedCyst: 2 };

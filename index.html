@@ -444,6 +444,18 @@ PP.GL = function (canvas) {
    assumptions tuned so the sourced qualitative behaviour holds (see tests). */
 
 PP.SRC = {
+  msdAbscess: ['MSD Manual: Cutaneous abscess', 'https://www.msdmanuals.com/professional/dermatologic-disorders/bacterial-skin-infections/cutaneous-abscess'],
+  lsuID: ['LSU Procedure Manual: Incision and drainage', 'https://www.medschool.lsuhsc.edu/medical_education/undergraduate/csi/Procedure%20Manual/I&D.html'],
+  dermnetEpi2: ['DermNet: Epidermoid cyst', 'https://dermnetnz.org/topics/epidermoid-cyst'],
+  dermnetBlister: ['DermNet: Blistering skin conditions', 'https://dermnetnz.org/topics/blistering-skin-conditions'],
+  aafpTophus: ['AAFP 2021: Firm nodule on the ear (gouty tophus)', 'https://www.aafp.org/pubs/afp/issues/2021/1100/p521.html'],
+  pcdsTophi: ['PCDS: Gouty tophi', 'https://www.pcds.org.uk/clinical-guidance/gouty-tophi'],
+  dermnetCalcinosis: ['DermNet: Calcinosis cutis', 'https://dermnetnz.org/topics/calcinosis-cutis'],
+  dermnetFavre: ['DermNet: Favre-Racouchot syndrome', 'https://dermnetnz.org/topics/favre-racouchot-syndrome-pathology'],
+  dermnetFolliculitis: ['DermNet: Bacterial folliculitis', 'https://dermnetnz.org/topics/bacterial-folliculitis'],
+  bleedTime: ['StatPearls: Bleeding time', 'https://www.ncbi.nlm.nih.gov/books/NBK537233/'],
+  hbSpectra: ['OMLC: Optical absorption of hemoglobin (Prahl)', 'https://omlc.org/spectra/hemoglobin/'],
+  bloodOptics: ['Bosschaart 2014: Optical properties of whole blood', 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3953607/'],
   dermnetAcne: ['DermNet: Acne vulgaris', 'https://dermnetnz.org/topics/acne-vulgaris'],
   dermnetComedo: ['DermNet: Comedonal acne', 'https://dermnetnz.org/topics/comedonal-acne'],
   msdAcne: ['MSD Manual: Acne vulgaris', 'https://www.msdmanuals.com/professional/dermatologic-disorders/acne-and-related-disorders/acne-vulgaris'],
@@ -494,19 +506,20 @@ PP.TONES = [
 PP.AREAS = {
   cheek: { name: 'Cheek', size: 64, view: 24, set: 'deep', deepSet: 'deep', E: 110, Ld: 8, Heff: 1.4, dermis: 1.2, epi: 0.05,
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.06, hair: 0,
-    mix: [['pustule', 4], ['papule', 2], ['whitehead', 3], ['blackhead', 2], ['milium', 2], ['sebhyper', 1], ['molluscum', 1], ['giant', 1], ['nodule', 1], ['macrocomedone', 1]] },
+    mix: [['pustule', 4], ['papule', 2], ['whitehead', 3], ['blackhead', 2], ['milium', 2], ['sebhyper', 1], ['molluscum', 1], ['giant', 1], ['nodule', 1], ['macrocomedone', 1], ['solarComedone', 6, { cluster: 11 }]] },
   nose: { name: 'Nose', size: 40, view: 16, set: 'nose', deepSet: 'nose', E: 140, Ld: 5, Heff: 1.2, dermis: 1.3, epi: 0.05,
     rstl: 0, s1: 10, s2: 6, grav: [0, -0.85, -0.5], oil: 0.85, red: 0.12, hair: 0,
     mix: [['blackhead', 7], ['filament', 22], ['dpow', 1], ['trichostasis', 2], ['whitehead', 2], ['pustule', 1]] },
   beard: { name: 'Beard & jaw', size: 64, view: 26, set: 'deep', deepSet: 'deep', E: 120, Ld: 8, Heff: 1.5, dermis: 1.4, epi: 0.06,
     rstl: 70, s1: 12, s2: 5, grav: [0, -0.95, -0.3], oil: 0.4, red: 0.08, hair: 1,
-    mix: [['ingrown', 4], ['pustule', 2], ['papule', 2], ['nodule', 1], ['pseudocyst', 1]] },
+    mix: [['ingrown', 4], ['pustule', 2], ['papule', 2], ['nodule', 1], ['pseudocyst', 1], ['folliculitis', 7, { cluster: 16 }]] },
   back: { name: 'Back', size: 150, view: 64, set: 'body', deepSet: 'body', E: 160, Ld: 15, Heff: 2.4, dermis: 1.95, epi: 0.08,
     rstl: 90, s1: 14, s2: 6, grav: [0, 0, -1], oil: 0.5, red: 0.03, hair: 0,
-    mix: [['epidermoid', 1], ['steatocystoma', 2], ['lipoma', 1], ['furuncle', 1], ['carbuncle', 1], ['giant', 1], ['pustule', 3], ['blackhead', 2], ['dpow', 1]] },
+    mix: [['epidermoid', 1], ['steatocystoma', 2], ['lipoma', 1], ['furuncle', 1], ['carbuncle', 1], ['giant', 1], ['pustule', 3], ['blackhead', 2], ['dpow', 1],
+      ['abscess', 1], ['inflamedCyst', 1], ['calcinosis', 1], ['folliculitis', 6, { cluster: 22 }]] },
   scalp: { name: 'Scalp (shaved)', size: 100, view: 42, set: 'body', deepSet: 'body', E: 180, Ld: 6, Heff: 1.6, dermis: 1.8, epi: 0.07,
     rstl: 0, s1: 14, s2: 8, grav: [0, -0.5, -0.86], oil: 0.6, red: 0.05, hair: 2,
-    mix: [['pilar', 2], ['pustule', 2], ['epidermoid', 1], ['furuncle', 1]] },
+    mix: [['pilar', 2], ['pustule', 2], ['epidermoid', 1], ['furuncle', 1], ['folliculitis', 5, { cluster: 20 }]] },
   sandbox: { name: 'Sandbox', size: 80, view: 30, set: 'deep', deepSet: 'deep', E: 110, Ld: 8, Heff: 1.4, dermis: 1.2, epi: 0.05,
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.05, hair: 0, mix: [] },
 };
@@ -514,11 +527,11 @@ PP.AREAS = {
 // How much each dome swells under squeezing pressure (fraction of its height at ~30 kPa): fluid-filled cysts are
 // fluctuant and bulge, pustule and whitehead domes rise, open pores stay flat (their plug rises instead), solid
 // papules, nodules and lobular lesions barely change.
-PP.BULGE = { pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
+PP.BULGE = { abscess: 0.7, inflamedCyst: 0.6, blister: 0.25, bloodBlister: 0.25, tophus: 0.05, calcinosis: 0.03, solarComedone: 0, folliculitis: 0.45, pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
   milium: 0.3, furuncle: 0.5, carbuncle: 0.45, pseudocyst: 0.6, papule: 0.12, nodule: 0.1, sebhyper: 0.05, epidermoid: 0.9,
   pilar: 0.7, steatocystoma: 0.85, lipoma: 0.08, ingrown: 0.4, molluscum: 0.3 };
 // what an incision exposes below the roof: 1 cyst wall + keratin, 2 pus pocket, 3 fat lobules, 4 chalk
-PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
+PP.CUTLAYER = { abscess: 2, inflamedCyst: 1, tophus: 4, calcinosis: 4, blister: 5, bloodBlister: 5, folliculitis: 2, epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
 
 /* Close-ups anywhere on the face/body: the region under the cursor picks a base area (skin mechanics, scan set,
    hair) and a blemish mix typical of that site. Comedones and milia favour the T-zone, temples and the ear's
@@ -527,26 +540,26 @@ PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2,
 PP.SPOTS = {
   cheek: { base: 'cheek', name: 'cheek', size: 56, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['whitehead', 2], ['blackhead', 2], ['milium', 1]] },
   forehead: { base: 'cheek', name: 'Forehead', size: 64, view: 24, rstl: 0, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 2], ['pustule', 1], ['milium', 1]] },
-  temple: { base: 'cheek', name: 'temple', size: 50, view: 20, rstl: 20, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 1], ['milium', 2]] },
+  temple: { base: 'cheek', name: 'temple', size: 50, view: 20, rstl: 20, mix: [['whitehead', 3], ['blackhead', 2], ['papule', 1], ['milium', 2], ['solarComedone', 7, { cluster: 12 }]] },
   chin: { base: 'beard', name: 'Chin', size: 50, view: 22, rstl: null, mix: [['pustule', 2], ['papule', 2], ['ingrown', 2], ['whitehead', 1], ['nodule', 1]] },
-  jaw: { base: 'beard', name: 'jaw', size: 56, view: 24, rstl: null, mix: [['ingrown', 3], ['pustule', 2], ['papule', 2], ['nodule', 1]] },
-  ear: { base: 'cheek', name: 'ear', size: 36, view: 15, rstl: 90, mix: [['blackhead', 3], ['whitehead', 2], ['milium', 1], ['pustule', 1]] },
-  neck: { base: 'beard', name: 'Neck', size: 60, view: 26, rstl: 0, mix: [['ingrown', 3], ['pustule', 2], ['papule', 1], ['epidermoid', 1]] },
-  scalp: { base: 'scalp', name: 'scalp', size: 90, view: 40, rstl: null, mix: [['pilar', 1], ['pustule', 2], ['furuncle', 1]] },
-  chest: { base: 'back', name: 'Chest', size: 100, view: 44, rstl: 0, mix: [['papule', 3], ['pustule', 3], ['steatocystoma', 2], ['epidermoid', 1], ['blackhead', 2]] },
-  shoulder: { base: 'back', name: 'shoulder', size: 100, view: 44, rstl: 0, mix: [['pustule', 3], ['papule', 2], ['furuncle', 1], ['epidermoid', 1], ['lipoma', 1]] },
-  upperback: { base: 'back', name: 'upper back', size: 120, view: 52, rstl: 0, mix: [['pustule', 3], ['blackhead', 2], ['epidermoid', 1], ['steatocystoma', 1], ['furuncle', 1]] },
+  jaw: { base: 'beard', name: 'jaw', size: 56, view: 24, rstl: null, mix: [['ingrown', 3], ['pustule', 2], ['papule', 2], ['nodule', 1], ['folliculitis', 5, { cluster: 14 }]] },
+  ear: { base: 'cheek', name: 'ear', size: 36, view: 15, rstl: 90, mix: [['blackhead', 3], ['whitehead', 2], ['milium', 1], ['pustule', 1], ['tophus', 2]] },
+  neck: { base: 'beard', name: 'Neck', size: 60, view: 26, rstl: 0, mix: [['ingrown', 3], ['pustule', 2], ['papule', 1], ['epidermoid', 1], ['inflamedCyst', 1], ['folliculitis', 5, { cluster: 14 }]] },
+  scalp: { base: 'scalp', name: 'scalp', size: 90, view: 40, rstl: null, mix: [['pilar', 1], ['pustule', 2], ['furuncle', 1], ['folliculitis', 5, { cluster: 18 }]] },
+  chest: { base: 'back', name: 'Chest', size: 100, view: 44, rstl: 0, mix: [['papule', 3], ['pustule', 3], ['steatocystoma', 2], ['epidermoid', 1], ['blackhead', 2], ['abscess', 1], ['folliculitis', 5, { cluster: 16 }]] },
+  shoulder: { base: 'back', name: 'shoulder', size: 100, view: 44, rstl: 0, mix: [['pustule', 3], ['papule', 2], ['furuncle', 1], ['epidermoid', 1], ['lipoma', 1], ['abscess', 1], ['blister', 1], ['bloodBlister', 1]] },
+  upperback: { base: 'back', name: 'upper back', size: 120, view: 52, rstl: 0, mix: [['pustule', 3], ['blackhead', 2], ['epidermoid', 1], ['steatocystoma', 1], ['furuncle', 1], ['abscess', 1], ['inflamedCyst', 1], ['calcinosis', 1]] },
 };
 
 /* Contents materials (particle mat ids). rheo: liquid (Newtonian, Poiseuille), paste (Bingham), plug (rigid sliding),
    pearl (rigid ball), lobule (soft solid), core (cohesive chain), hair (elastic rod), sac (membrane chain). */
 PP.MAT = {
   pus: 1, pusThin: 2, serum: 3, blood: 4, sebum: 5, keratin: 6, oil: 7, fat: 8, core: 9, hair: 10, sac: 11, pearl: 12,
-  molluscum: 13, packing: 14, bloodyPus: 15, iodine: 16, lido: 17,
+  molluscum: 13, packing: 14, bloodyPus: 15, iodine: 16, lido: 17, chalk: 18,
 };
 PP.MATCOL = { // sRGB base colours
   1: '#e9dba4', 2: '#e6d79a', 3: '#e9d9a8', 4: '#5e0f0c', 5: '#e8d8a8', 6: '#e7dfc8', 7: '#e3c56a', 8: '#e8c84f',
-  9: '#c9c16a', 10: '#2a1d16', 11: '#efe6dc', 12: '#f4f1ea', 13: '#efece2', 14: '#f2efe8', 15: '#d39a7c',
+  9: '#c9c16a', 10: '#2a1d16', 11: '#efe6dc', 12: '#f4f1ea', 13: '#efece2', 14: '#f2efe8', 15: '#d39a7c', 18: '#f2efe6',
 };
 
 /* Lesion types. d: dome diameter range (mm). depth: cavity centre depth (mm). cav: cavity radius / dome radius.
@@ -646,6 +659,46 @@ PP.LTYPES = {
     open: 'umbil', openR: 0.12, contents: [{ m: 13, k: 'core', f: 1 }],
     desc: 'A pearly umbilicated papule with an expressible white cheesy core. Picking it spreads it to nearby skin.',
     src: ['molluscum'], hint: 'Curette, or needle plus a gentle squeeze. Not fingers.', protocol: ['curette'] },
+  abscess: { name: 'Abscess', vis: 21, group: 'Deep pus', d: [15, 35], hf: 0.26, depth: 3.5, cav: 0.62, roofT: 1.6, wallT: 0.7, roofS: 300, wallS: 160, pockets: 3,
+    open: 'closed', contents: [{ m: 2, k: 'liquid', f: 0.72, mu: 60 }, { m: 15, k: 'liquid', f: 0.28, mu: 25 }],
+    desc: 'A walled-off pocket of pus 1-3 cm across in the dermis or fat: red, hot, tender and fluctuant, usually without a head, often divided into loculations.',
+    src: ['msdAbscess', 'lsuID', 'pus'], hint: 'Lidocaine, then a #15 incision along the tension lines across the fluctuant area. Express, then break the loculations with the hemostat; packing is optional.',
+    protocol: ['lido', 'blade15', 'squeeze', 'hemostat', 'gauze'] },
+  inflamedCyst: { name: 'Inflamed epidermoid cyst', vis: 22, group: 'Cyst', d: [10, 25], hf: 0.34, depth: 2.4, cav: 0.6, roofT: 0.7, wallT: 0.02, roofS: 900, wallS: 260,
+    open: 'punctum', openR: 0.16, contents: [{ m: 15, k: 'liquid', f: 0.25, mu: 40 }, { m: 6, k: 'paste', f: 0.55, ty: 0.8, mu: 2e4 }, { m: 2, k: 'liquid', f: 0.2, mu: 30 }],
+    desc: 'An epidermoid cyst whose wall has ruptured into the dermis: red, boggy and tender. Cheesy keratin comes out mixed with pus and blood, and there is no intact sac left to deliver.',
+    src: ['dermnetEpi2', 'aafpCyst'], hint: 'Ideally let it settle first. Otherwise lidocaine and a #11 stab, express the cheesy keratin and pus; the remnant is excised once it is calm.',
+    protocol: ['lido', 'blade11', 'squeeze', 'gauze'] },
+  blister: { name: 'Friction blister', vis: 23, group: 'Blister', d: [5, 15], hf: 0.42, depth: 0.08, cav: 0.95, roofT: 0.1, wallT: 0.6, roofS: 420, wallS: 4000,
+    open: 'closed', contents: [{ m: 3, k: 'liquid', f: 1, mu: 2 }],
+    desc: 'Shear split the epidermis and clear straw-coloured serum filled the gap. The thin roof protects the raw base beneath it.',
+    src: ['dermnetBlister'], hint: 'Sterile needle at the edge, let it drain, and keep the roof on as a natural dressing. Cutting the roof off exposes the raw base.',
+    protocol: ['iodine', 'needle', 'gauze'] },
+  bloodBlister: { name: 'Blood blister', vis: 24, group: 'Blister', d: [3, 12], hf: 0.4, depth: 0.08, cav: 0.95, roofT: 0.1, wallT: 0.6, roofS: 460, wallS: 4000,
+    open: 'closed', contents: [{ m: 4, k: 'liquid', f: 1, mu: 8 }],
+    desc: 'A pinch or crush broke small vessels under a split epidermis, so the blister filled with blood, part of it already dark and clotting.',
+    src: ['dermnetBlister'], hint: 'Best left alone; if it is tense and painful, a sterile needle at the edge drains it. Keep the roof on.',
+    protocol: ['iodine', 'needle', 'gauze'] },
+  tophus: { name: 'Gouty tophus', vis: 25, group: 'Chalky', d: [2, 8], hf: 0.34, depth: 0.6, cav: 0.62, roofT: 0.25, wallT: 0.3, roofS: 2600, wallS: 2600,
+    open: 'closed', contents: [{ m: 18, k: 'paste', f: 1, ty: 6, mu: 1e6 }],
+    desc: 'A firm, usually painless deposit of urate crystals under thin skin, often on the rim of the ear. It can perforate and discharge chalky white material.',
+    src: ['aafpTophus', 'pcdsTophi'], hint: 'Not a pimple: the gout needs treating. Opened with a #11 nick, gentle pressure extrudes gritty white paste.',
+    protocol: ['blade11', 'squeeze', 'gauze'] },
+  calcinosis: { name: 'Calcinosis cutis', vis: 26, group: 'Chalky', d: [2, 10], hf: 0.3, depth: 0.8, cav: 0.6, roofT: 0.3, wallT: 0.35, roofS: 2800, wallS: 2800,
+    open: 'closed', contents: [{ m: 18, k: 'paste', f: 1, ty: 9, mu: 2e6 }],
+    desc: 'Calcium salts deposited in the skin, here in an old scar: a hard white nodule that can discharge gritty chalk through a small ulcer.',
+    src: ['dermnetCalcinosis'], hint: 'Small deposits can be shelled out through a #11 nick and squeezed; surgery can provoke more (DermNet).',
+    protocol: ['lido', 'blade11', 'squeeze', 'gauze'] },
+  solarComedone: { name: 'Solar comedone (Favre-Racouchot)', vis: 0, group: 'Plug', d: [1.4, 3.2], hf: 0.04, depth: 1.1, cav: 0.55, roofT: 0, wallT: 0.06, roofS: 0, wallS: 800,
+    open: 'open', openR: 0.42, plugL: [1.6, 3.0], contents: [{ m: 5, k: 'plug', f: 1, tip: 1 }],
+    desc: 'Large open comedones packed together on sun-damaged skin around the temples and eyes, with small cysts between them (nodular elastosis with cysts and comedones).',
+    src: ['dermnetFavre'], hint: 'Warm compress, then the comedone loop one plug at a time. Sun protection and not smoking prevent new ones.',
+    protocol: ['compress', 'loop'] },
+  folliculitis: { name: 'Folliculitis pustule', vis: 27, group: 'Pus', d: [1.0, 2.6], hf: 0.38, depth: 0.25, cav: 0.5, roofT: 0.04, wallT: 0.05, roofS: 250, wallS: 520,
+    open: 'closed', contents: [{ m: 1, k: 'paste', f: 0.8, ty: 0.2, mu: 2e5 }, { m: 3, k: 'liquid', f: 0.2, mu: 30 }],
+    desc: 'An inflamed hair follicle: a small pustule pierced by a hair, usually in groups where hair is shaved or rubbed.',
+    src: ['dermnetFolliculitis'], hint: 'Usually settles with hygiene and not shaving over it. A sterile needle at the head drains it; leave the hair.',
+    protocol: ['needle', 'squeeze'] },
 };
 
 PP.TOOLS = [
@@ -699,6 +752,8 @@ PP.CREDITS = [
 ];
 // attach the per-type swelling once the lesion types exist
 for (const [k, v] of Object.entries(PP.BULGE)) if (PP.LTYPES[k]) PP.LTYPES[k].bulge = v;
+// built-in tension (kPa): tense boils, abscesses and blisters push contents out as soon as they are opened
+PP.TENSE = { giant: 5, furuncle: 3, carbuncle: 3, pseudocyst: 2, abscess: 4, blister: 3.5, bloodBlister: 3, inflamedCyst: 2 };
 
 /* ---- 03_physics.js ---- */
 'use strict';
@@ -917,6 +972,9 @@ PP.Particles = function (cap) {
   this.rest = F(cap); this.bend = F(cap); this.brk = F(cap);
   this.age = F(cap); this.still = F(cap); this.owner = I(cap).fill(-1);
   this.onSkin = new Uint8Array(cap);
+  // liquid composition (volume fractions): blood and pus; the rest is clear fluid (serum, oil)
+  this.fb = F(cap); this.fp = F(cap); this.gt = F(cap);
+  const hit = new Uint8Array(cap);   // touched the skin at any constraint iteration this step
   this.free = []; for (let i = cap - 1; i >= 0; i--) this.free.push(i);
   this.count = 0;
   this.hi = 0;   // highest used index + 1
@@ -928,6 +986,7 @@ PP.Particles = function (cap) {
     this.r[i] = r; this.mat[i] = mat; this.alive[i] = 1; this.pin[i] = 0;
     this.next[i] = -1; this.prev[i] = -1; this.rest[i] = 0; this.bend[i] = 0; this.brk[i] = 1.6;
     this.age[i] = 0; this.still[i] = 0; this.owner[i] = -1; this.onSkin[i] = 0;
+    const cc = compOf(mat); this.fb[i] = cc[0]; this.fp[i] = cc[1]; this.gt[i] = 0;
     const c = col || PP.hex2lin(PP.MATCOL[mat] || '#ffffff');
     this.cr[i] = c[0]; this.cg[i] = c[1]; this.cb[i] = c[2];
     this.count++;
@@ -949,17 +1008,48 @@ PP.Particles = function (cap) {
 
   const LIQ = new Set([PP.MAT.blood, PP.MAT.serum, PP.MAT.pusThin, PP.MAT.oil, PP.MAT.bloodyPus]);
   this.isLiquid = (m) => LIQ.has(m);
+  function compOf(m) { return m === PP.MAT.blood ? [1, 0] : m === PP.MAT.bloodyPus ? [0.35, 0.6] : m === PP.MAT.pusThin || m === PP.MAT.pus ? [0, 1] : [0, 0]; }
+  this.compOf = compOf;
+  // the material that governs a mixture's behaviour (rendering uses the fractions themselves)
+  const domMat = (fb, fp, m) => (fb >= 0.5 ? PP.MAT.blood : fp >= 0.5 ? (fb > 0.12 ? PP.MAT.bloodyPus : PP.MAT.pusThin) : fb > 0.12 || fp > 0.25 ? PP.MAT.bloodyPus : m);
+  // shed blood gels after the bleeding time (a few minutes; StatPearls); serum and pus do not
+  this.clotOf = (i) => this.fb[i] * PP.smooth(150, 420, this.age[i]);
+  /* Furmidge pinning: a sessile bead clings until its weight along the slope beats contact-angle hysteresis,
+     m g sin(a) = w gamma (cos thr - cos tha). For blood (gamma 0.055 N/m, 90/50 deg) the bead clings on vertical skin
+     until ~3.6 mm wide (~12 uL); thicker pus clings longer, serum and oil let go sooner (research report). */
+  const WC = { 4: 3.6, 3: 3.2, 2: 4.6, 15: 4.1, 7: 2.6 };
+  // pastes (pus, keratin, sebum, fat, cores, membranes) have a yield stress and are sticky: once on the skin they stay
+  // where they land and pile up, instead of sliding off; a pearl can still roll
+  const STICK = { 1: 0.992, 5: 0.99, 6: 0.995, 8: 0.985, 9: 0.99, 11: 0.99, 13: 0.99, 14: 0.97, 18: 0.995 };
+  // a welling bead: grow the bead already sitting at this exit, or start a new one on the skin
+  this.well = function (ref, x, y, z, vol, mat, col, reach) {
+    let i = ref;
+    if (i >= 0 && (!this.alive[i] || !LIQ.has(this.mat[i]) || this.next[i] >= 0 || this.prev[i] >= 0 || Math.hypot(this.x[i] - x, this.y[i] - y) > 1.5 * this.r[i] + (reach || 0.25))) i = -1;
+    if (i < 0) {
+      const r0 = Math.max(0.05, Math.cbrt((3 * vol) / (4 * Math.PI)));
+      i = this.spawn(x, y, z + r0 * 0.82, r0, mat, col);
+      if (i >= 0) this.onSkin[i] = 1;
+      return i;
+    }
+    const V = (4 / 3) * Math.PI * this.r[i] ** 3, Vn = V + vol, w = vol / Vn, cc = compOf(mat);
+    this.fb[i] += (cc[0] - this.fb[i]) * w; this.fp[i] += (cc[1] - this.fp[i]) * w;
+    if (col) { this.cr[i] += (col[0] - this.cr[i]) * w; this.cg[i] += (col[1] - this.cg[i]) * w; this.cb[i] += (col[2] - this.cb[i]) * w; }
+    this.r[i] = Math.cbrt((3 * Vn) / (4 * Math.PI));
+    this.mat[i] = domMat(this.fb[i], this.fp[i], this.mat[i]);
+    this.age[i] *= V / Vn;   // fresh fluid dilutes the clotting clock
+    return i;
+  };
   // material properties: damping, skin friction, pinning radius (mm) for droplets, merge cap
   const MP = {};
   const def = (m, damp, fric, pinR, rmax) => (MP[m] = { damp, fric, pinR, rmax });
-  def(1, 0.92, 0.85, 99, 0); def(2, 0.97, 0.45, 0.9, 1.1); def(3, 0.985, 0.25, 0.7, 1.0); def(4, 0.985, 0.3, 1.05, 1.7);
+  def(1, 0.92, 0.85, 99, 0); def(2, 0.97, 0.45, 0.9, 2.0); def(3, 0.985, 0.25, 0.7, 1.8); def(4, 0.985, 0.3, 1.05, 2.6);
   def(5, 0.9, 0.9, 99, 0); def(6, 0.9, 0.9, 99, 0); def(7, 0.98, 0.25, 0.8, 1.3); def(8, 0.9, 0.7, 99, 0);
   def(9, 0.9, 0.85, 99, 0); def(10, 0.93, 0.5, 99, 0); def(11, 0.9, 0.8, 99, 0); def(12, 0.96, 0.15, 99, 0);
-  def(13, 0.9, 0.85, 99, 0); def(14, 0.9, 0.9, 99, 0); def(15, 0.98, 0.35, 0.85, 1.2);
+  def(13, 0.9, 0.85, 99, 0); def(14, 0.9, 0.9, 99, 0); def(15, 0.98, 0.35, 0.85, 2.2); MP[7].rmax = 2.0; def(18, 0.9, 0.92, 99, 0);
   this.MP = MP;
 
   // spatial hash (rebuilt each step) for droplet merging / separation
-  const CS = 1.0;
+  const CS = 2.0;   // grid cell (mm); merging searches +-2 cells so wide puddle footprints still find each other
   let gridW = 0, gridH = 0, ox = 0, oy = 0, head = null, link = new Int32Array(cap);
   const buildGrid = (W) => {
     const s = W.area.size;
@@ -981,14 +1071,20 @@ PP.Particles = function (cap) {
     // integrate
     for (let i = 0; i < hi; i++) {
       if (!this.alive[i]) continue;
-      this.age[i] += dt;
+      this.age[i] += dt; hit[i] = 0;
       if (this.pin[i]) { this.px[i] = this.x[i]; this.py[i] = this.y[i]; this.pz[i] = this.z[i]; continue; }
       const mp = MP[this.mat[i]] || MP[1];
       const damp = this.onSkin[i] ? mp.damp * 0.97 : 0.999;
       let vx = (this.x[i] - this.px[i]) * damp, vy = (this.y[i] - this.py[i]) * damp, vz = (this.z[i] - this.pz[i]) * damp;
       this.px[i] = this.x[i]; this.py[i] = this.y[i]; this.pz[i] = this.z[i];
-      const air = this.onSkin[i] ? 1 : 1; // (air drag negligible at these scales)
-      this.x[i] += vx * air + g[0] * dt * dt; this.y[i] += vy * air + g[1] * dt * dt; this.z[i] += vz * air + g[2] * dt * dt;
+      let ax = g[0], ay = g[1];
+      if (this.onSkin[i] && LIQ.has(this.mat[i])) {
+        const x = this.x[i], y = this.y[i];
+        const hx = (W.skinH(x + 0.25, y) - W.skinH(x - 0.25, y)) * 2, hy = (W.skinH(x, y + 0.25) - W.skinH(x, y - 0.25)) * 2;
+        ax += g[2] * hx; ay += g[2] * hy;
+        this.gt[i] = Math.hypot(ax, ay);
+      }
+      this.x[i] += vx + ax * dt * dt; this.y[i] += vy + ay * dt * dt; this.z[i] += vz + g[2] * dt * dt;
     }
     // constraints
     const iters = 4;
@@ -1033,18 +1129,30 @@ PP.Particles = function (cap) {
         const r = this.r[i];
         const sh = W.skinH(this.x[i], this.y[i]);
         const floor = sh + r * 0.82;
-        if (this.z[i] < floor) {
-          this.z[i] = floor;
-          this.onSkin[i] = 1;
-          if (it === iters - 1) {
+        if (this.z[i] < floor) { this.z[i] = floor; this.onSkin[i] = 1; hit[i] = 1; }
+        else if (it === iters - 1 && !hit[i]) this.onSkin[i] = this.z[i] < floor + 0.05 ? 1 : 0;
+        // friction / contact-line pinning once per step for anything that touched the skin (the collision is usually
+        // resolved in an early iteration, so testing only the last one let everything slide)
+        if (it === iters - 1 && hit[i]) {
             const mp = MP[this.mat[i]] || MP[1];
             // friction / contact-line pinning: beads smaller than pinR hold; larger ones slide
-            let fr = mp.fric;
-            if (this.isLiquid(this.mat[i])) fr = r < mp.pinR ? 0.97 : PP.clamp(0.75 - (r - mp.pinR) * 1.4, 0.05, 0.75);
+            let fr = Math.max(mp.fric, STICK[this.mat[i]] || 0);
+            if (this.isLiquid(this.mat[i])) {
+              const w = 2.97 * r, wc = (WC[this.mat[i]] || 3.6) * (1 + 2 * this.clotOf(i));
+              const ex = (w * w * this.gt[i]) / (wc * wc * 9810);
+              fr = ex < 1 ? 1 : PP.clamp(0.62 - (ex - 1) * 0.25, 0.1, 0.62) + (this.fp[i] > 0.5 ? 0.15 : 0);
+              if (ex >= 1) {
+                // a running bead is viscosity-limited: blood runs ~1 cm/s down vertical skin, pus far slower
+                this.x[i] = PP.lerp(this.x[i], this.px[i], fr); this.y[i] = PP.lerp(this.y[i], this.py[i], fr);
+                const mx = this.x[i] - this.px[i], my = this.y[i] - this.py[i], md = Math.hypot(mx, my);
+                const vmax = (this.fp[i] > 0.5 ? 3 : 9) * Math.min(3, ex - 0.7) * dt;
+                if (md > vmax) { this.x[i] = this.px[i] + (mx / md) * vmax; this.y[i] = this.py[i] + (my / md) * vmax; }
+                fr = 0;
+              }
+            }
             this.x[i] = PP.lerp(this.x[i], this.px[i], fr);
             this.y[i] = PP.lerp(this.y[i], this.py[i], fr);
-          }
-        } else if (it === iters - 1) this.onSkin[i] = this.z[i] < floor + 0.05 ? 1 : 0;
+        }
         if (W.colliders) for (const c of W.colliders) c(i, this);
       }
     }
@@ -1053,14 +1161,16 @@ PP.Particles = function (cap) {
     for (let i = 0; i < hi; i++) {
       if (!this.alive[i] || !this.isLiquid(this.mat[i]) || this.next[i] >= 0 || this.prev[i] >= 0) continue;
       const gx = Math.floor((this.x[i] - ox) / CS), gy = Math.floor((this.y[i] - oy) / CS);
-      for (let yy = gy - 1; yy <= gy + 1; yy++) for (let xx = gx - 1; xx <= gx + 1; xx++) {
+      for (let yy = gy - 2; yy <= gy + 2; yy++) for (let xx = gx - 2; xx <= gx + 2; xx++) {
         if (xx < 0 || yy < 0 || xx >= gridW || yy >= gridH) continue;
         for (let j = head[yy * gridW + xx]; j >= 0; j = link[j]) {
           if (j <= i || !this.alive[j] || !this.alive[i]) continue;
           const mj = this.mat[j], mi = this.mat[i];
           if (!this.isLiquid(mj)) continue;
           const dx = this.x[j] - this.x[i], dy = this.y[j] - this.y[i], dz = this.z[j] - this.z[i];
-          const d2 = dx * dx + dy * dy + dz * dz, rs = (this.r[i] + this.r[j]) * 0.75;
+          const flat = this.onSkin[i] && this.onSkin[j];
+          // sessile beads coalesce as soon as their contact lines touch (footprint radius ~1.485 r at ~70 deg)
+          const d2 = flat ? dx * dx + dy * dy : dx * dx + dy * dy + dz * dz, rs = (this.r[i] + this.r[j]) * (flat ? 1.4 : 0.75);
           if (d2 > rs * rs) continue;
           const cap2 = (MP[mi] || MP[4]).rmax;
           const vi = this.r[i] ** 3, vj = this.r[j] ** 3;
@@ -1069,8 +1179,9 @@ PP.Particles = function (cap) {
           const wi = vi / (vi + vj), wj = 1 - wi;
           this.x[i] = this.x[i] * wi + this.x[j] * wj; this.y[i] = this.y[i] * wi + this.y[j] * wj; this.z[i] = Math.max(this.z[i], this.z[j]);
           this.px[i] = this.px[i] * wi + this.px[j] * wj; this.py[i] = this.py[i] * wi + this.py[j] * wj; this.pz[i] = Math.max(this.pz[i], this.pz[j]);
-          // blood dominates colour when mixed
-          if (mj === PP.MAT.blood && mi !== mj) { this.mat[i] = mj; }
+          this.fb[i] = this.fb[i] * wi + this.fb[j] * wj; this.fp[i] = this.fp[i] * wi + this.fp[j] * wj;
+          this.age[i] = this.age[i] * wi + this.age[j] * wj; this.onSkin[i] = this.onSkin[i] || this.onSkin[j];
+          this.mat[i] = domMat(this.fb[i], this.fp[i], mi === PP.MAT.oil && mj === PP.MAT.oil ? mi : mi === PP.MAT.serum || mj === PP.MAT.serum ? PP.MAT.serum : mi);
           this.cr[i] = this.cr[i] * wi + this.cr[j] * wj; this.cg[i] = this.cg[i] * wi + this.cg[j] * wj; this.cb[i] = this.cb[i] * wi + this.cb[j] * wj;
           this.r[i] = rn;
           this.kill(j);
@@ -1087,11 +1198,17 @@ PP.Particles = function (cap) {
       const sp = Math.abs(this.x[i] - this.px[i]) + Math.abs(this.y[i] - this.py[i]) + Math.abs(this.z[i] - this.pz[i]);
       this.still[i] = sp < 0.002 ? this.still[i] + dt : 0;
       if (sp > mv) mv = sp;
-      if (this.onSkin[i] && this.isLiquid(this.mat[i]) && W.onTrail && sp > 0.01) W.onTrail(i);
-      // settled small liquid droplets soak into the film decal (keeps the particle budget)
-      if (this.isLiquid(this.mat[i]) && this.onSkin[i] && this.still[i] > 2.5 && this.r[i] < 0.45 && this.next[i] < 0) {
-        if (W.onSettle) W.onSettle(i);
-        this.kill(i);
+      if (this.onSkin[i] && this.isLiquid(this.mat[i]) && this.next[i] < 0) {
+        // a running bead leaves a thin wet film behind (~6 um) and shrinks; once small enough it pins and stops
+        const mxy = Math.hypot(this.x[i] - this.px[i], this.y[i] - this.py[i]);
+        if (mxy > 0.004) {
+          const w = 2.97 * this.r[i], V = (4 / 3) * Math.PI * this.r[i] ** 3 - 0.006 * w * mxy;
+          if (W.onTrail) W.onTrail(i, mxy, w);
+          if (V <= 0.004) { this.kill(i); continue; }
+          this.r[i] = Math.cbrt((3 * V) / (4 * Math.PI));
+        }
+        // only tiny beads that have sat still for a while soak into the film
+        if (this.still[i] > 20 && this.r[i] < 0.18) { if (W.onSettle) W.onSettle(i); this.kill(i); continue; }
       }
     }
     while (this.hi > 0 && !this.alive[this.hi - 1]) this.hi--;
@@ -1140,7 +1257,8 @@ PP.Lesion = function (id, type, x, y, rng, opt = {}) {
   this.roofS = T.roofS * (0.85 + 0.3 * rng()); this.wallS = T.wallS * (0.85 + 0.3 * rng());
   this.inflam = { pustule: 0.55, giant: 0.6, furuncle: 0.9, carbuncle: 0.95, pseudocyst: 0.75, papule: 0.6, nodule: 0.8,
     ingrown: 0.45, molluscum: 0.05, sebhyper: 0.08, epidermoid: 0.05, pilar: 0, steatocystoma: 0.03, lipoma: 0,
-    whitehead: 0.05, macrocomedone: 0.08, blackhead: 0.02, dpow: 0.03, trichostasis: 0.02, filament: 0, milium: 0 }[type] || 0;
+    whitehead: 0.05, macrocomedone: 0.08, blackhead: 0.02, dpow: 0.03, trichostasis: 0.02, filament: 0, milium: 0,
+    abscess: 0.95, inflamedCyst: 0.9, blister: 0.04, bloodBlister: 0.12, tophus: 0.12, calcinosis: 0.06, solarComedone: 0.02, folliculitis: 0.5 }[type] || 0;
   this.inflam *= 0.8 + 0.4 * rng();
   // contents
   let V0 = (4 / 3) * Math.PI * Math.pow(this.rc, 3) * 0.85;
@@ -1221,7 +1339,7 @@ PP.Lesion.prototype.domeH = function () {
   const f = this.queue.length ? this.fill() : 1;
   const press = 1 + (this.T.bulge != null ? this.T.bulge : 0.5) * PP.clamp(this.P / 30, 0, 1) * f;
   let h = this.H0 * press * (0.25 + 0.75 * f) * (1 + 0.35 * this.deep);
-  if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis') h = this.H0;
+  if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis' || this.type === 'solarComedone') h = this.H0;
   if (this.steroidT >= 0) h *= PP.clamp(1 - this.steroidT / (2.5 * 86400), 0.15, 1);
   return h + this.hematoma * 0.6;
 };
@@ -1253,7 +1371,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
   }
   const f = this.queue.length ? this.fill() : 1;
   // intrinsic tension (tense pustules/boils) + transmitted load; Kelvin–Voigt-like lag
-  const intrinsic = (this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0.5) * f;
+  const intrinsic = (PP.TENSE[this.type] != null ? PP.TENSE[this.type] : 0.5) * f;
   let target = intrinsic + load.total * (0.25 + 0.75 * Math.pow(f, 0.6));
   if (T.mobile && this.open.r <= 0) target *= 0.15;
   // pore vacuum: reduced pressure over an open pore adds to the outward pressure difference
@@ -1328,14 +1446,19 @@ PP.Lesion.prototype.surfaceRupture = function (ctx, Rc) {
 // (thin contents gush along the cut; thick ones bulge into it)
 PP.Lesion.prototype.incisionRelease = function (ctx, kind) {
   const c = this.cur(); if (!c || c.vol <= 0 || this.T.mobile) return;
-  const intrinsic = this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0;
-  const Pst = Math.max(this.P, intrinsic * this.fill());
+  const Pst = Math.max(this.P, (PP.TENSE[this.type] || 0) * this.fill());
   if (Pst < 1.5 || (c.k !== 'liquid' && c.k !== 'paste')) return;
   const thin = c.k === 'liquid' && (c.mu || 1) < 400;
   const frac = PP.clamp(0.04 + Pst / 40, 0.04, thin ? 0.4 : 0.12);
   const vol = Math.min(c.vol, this.V0 * frac * ctx.S.spurt);
   if (vol <= 0) return;
-  this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
+  if (thin && Pst < 8) {
+    // modest stored pressure: the contents gush and well out of the cut as one pool (they only squirt under a hard squeeze)
+    const P = ctx.parts, cx = this.x + this.ox, cy = this.y + this.oy;
+    this.bead = P.well(this.bead != null ? this.bead : -1, cx, cy, ctx.skinH ? ctx.skinH(cx, cy) : 0, vol, c.m === 1 ? PP.MAT.pusThin : c.m, this.contentCol(c), this.open.r + 0.5);
+    c.vol = Math.max(0, c.vol - vol); this.V = Math.max(0, this.V - vol); this.ext += vol;
+    ctx.fx.extrude(this, vol * 20);
+  } else this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
   this.events.push('gush');
   ctx.fx.toast('', thin ? 'Gush' : 'Contents bulge', thin ? 'The incision released the stored pressure at once: contents gushed out along the cut.' : 'Thick contents bulged straight into the fresh incision.');
 };
@@ -1457,12 +1580,18 @@ PP.Lesion.prototype.emitFlow = function (ctx, Q, dt, ropen, viaPunctum) {
       const i = P.spawn(cx, cy, top, rs * (0.94 + 0.12 * ctx.rng()), c.m === 1 ? PP.MAT.pus : c.m, col);
       if (i < 0) break;
       if (c.m === PP.MAT.keratin) { const k = 0.9 + 0.15 * ctx.rng(); P.cr[i] *= k; P.cg[i] *= k; P.cb[i] *= k * 0.97; }
+      if (c.m === 1 && (this.bleedOpen > 0 || this.hematoma > 0 || this.inflam > 0.8 || this.queue.some((q) => q.m === PP.MAT.bloodyPus))) {
+        // blood-streaked pus: streaks along the worm, not a uniform pink
+        this.strandN = (this.strandN || 0) + 1;
+        const st = Math.max(0, Math.sin(this.strandN * 0.9 + this.seed * 20) - 0.55) * 1.4;
+        P.cr[i] = PP.lerp(P.cr[i], 0.42, 0.55 * st); P.cg[i] = PP.lerp(P.cg[i], 0.05, 0.55 * st); P.cb[i] = PP.lerp(P.cb[i], 0.04, 0.55 * st);
+      }
       P.pin[i] = 1;
       if (root != null && root >= 0 && P.alive[root] && P.pin[root]) {
         P.pin[root] = 0;
         P.z[root] = top + sp; P.pz[root] = P.z[root] - v / 120;
-        const brk = c.m === PP.MAT.keratin ? 1.08 + 0.1 * ctx.rng() : 1.45;
-        P.link(root, i, sp, c.m === PP.MAT.keratin ? 0.25 : 0.12, brk);
+        const brk = c.m === PP.MAT.chalk ? 1.04 + 0.05 * ctx.rng() : c.m === PP.MAT.keratin ? 1.08 + 0.1 * ctx.rng() : 1.45;
+        P.link(root, i, sp, c.m === PP.MAT.keratin || c.m === PP.MAT.chalk ? 0.3 : 0.12, brk);
       } else if (root != null && root >= 0 && P.alive[root]) {
         P.link(root, i, sp, 0.12, 1.45);
       }
@@ -1470,24 +1599,20 @@ PP.Lesion.prototype.emitFlow = function (ctx, Q, dt, ropen, viaPunctum) {
     }
     this.strandRoot = root;
   } else {
-    // Newtonian: high exit velocity -> jet; otherwise welling droplets
+    // Newtonian: it only jets above the dripping-to-jetting transition (Weber rho v^2 d / sigma ~ 6; Clanet &
+    // Lasheras); below that it wells up as a bead at the opening that grows until it lets go and runs
     const v = Q / (Math.PI * ropen * ropen);
-    if (v > 600) {
+    const vJet = Math.sqrt(0.33 / Math.max(2 * ropen, 0.05)) * 1000;   // mm/s for sigma ~0.055 N/m
+    if (v > vJet) {
       const cone = 0.35;
       this.spray(ctx, dV, Math.min(v, PP.jetSpeed(this.P)), cone, c);
       return;
     }
-    this.dropAcc = (this.dropAcc || 0) + dV;
-    const rd = PP.clamp(ropen * 1.4, 0.1, 0.4);
-    const vd = (4 / 3) * Math.PI * rd * rd * rd;
-    while (this.dropAcc >= vd) {
-      this.dropAcc -= vd;
-      const a = ctx.rng() * Math.PI * 2, rr = ropen * 0.5 * ctx.rng();
-      const mat = c.m === 1 ? PP.MAT.pusThin : c.m;
-      const i = P.spawn(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, top + rd, rd, mat, col);
-      if (i >= 0) P.setVel(i, Math.cos(a) * 3, Math.sin(a) * 3, Math.min(v, 120), 1 / 120);
-      if (c.hairs && ctx.rng() < 0.03) this.spawnHair(ctx, cx, cy, top, 3 + ctx.rng() * 3, true);
-    }
+    const mat = c.m === 1 ? PP.MAT.pusThin : c.m;
+    const zs = ctx.skinH ? ctx.skinH(cx, cy) : 0;
+    this.bead = P.well(this.bead != null ? this.bead : -1, cx, cy, Math.max(zs, top * 0.6), dV, mat, col, ropen + 0.2);
+    if (this.type === 'bloodBlister' && this.bead >= 0) P.age[this.bead] = Math.max(P.age[this.bead], 260);
+    if (c.hairs && ctx.rng() < Math.min(1, dV * 0.6)) this.spawnHair(ctx, cx, cy, top, 3 + ctx.rng() * 3, true);
   }
   c.vol -= dV; this.V = Math.max(0, this.V - dV); this.ext += dV;
   ctx.fx.extrude(this, dV / dt);
@@ -1750,7 +1875,7 @@ PP.Wounds.prototype.openLesions = function (x, y, rOpen, depth, kind, len, cx, c
     const lx = L.x + L.ox, ly = L.y + L.oy;
     const d = Math.hypot(x - lx, y - ly);
     const T = L.T;
-    if (d > Math.max(L.R * 0.75, 0.6)) continue;
+    if (d > Math.max(L.R * (T.group === 'Blister' ? 0.98 : 0.75), 0.6)) continue;
     const reach = T.open === 'open' ? 0 : Math.max(L.roofT * 0.8, 0.03);
     if (depth < reach) {
       if (kind === 'needle' && T.roofT > 0.2 && !L._needleWarn) { L._needleWarn = 1; this.W.fx.toast('warn', 'Too deep for a needle prick', 'This roof is ' + L.roofT.toFixed(1) + ' mm thick. Use the #11 blade (or let it point first).'); }
@@ -1825,6 +1950,7 @@ PP.Wounds.prototype.updCut = function (c) {
     const d = this.segDist(c, L.x + L.ox, L.y + L.oy);
     if (d >= Math.max(L.R * 0.6, 0.6)) continue;
     if (!c.L || L.R > c.L.R) { c.L = L; c.layer = PP.CUTLAYER[L.type] || 0; c.layerZ = Math.max(L.roofT, 0.05); }
+    if (L.T.group === 'Blister' && c.blade === 'blade15') L.flapAng = Math.atan2(c.dy, c.dx);
     c.inflam = Math.max(c.inflam || 0, L.inflam + (L.deep || 0) * 0.4);
     if (L.T.open === 'open' && (c.blade === 'blade11' || c.blade === 'blade15') && !L._openCut) { L._openCut = 1; this.W.fx.toast('warn', 'Already open', 'A blackhead has its own pore: cutting only adds a wound. Use the comedone loop.'); }
     this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
@@ -1923,54 +2049,51 @@ PP.Wounds.prototype.stepBleed = function (dt) {
   const lim = this.depthLimits();
   // clotting progresses once per wound per frame; gauze pressure roughly triples the rate
   const clot = (el, x, y) => { const press = this.pressureAt(x, y); el.clot = Math.min(1, el.clot + (dt / 240) * (press > 0.5 ? 3 : 1)); return press; };
-  // emitted volume (µL) -> number of droplets of radius rd
-  const emit = (el, rate, rd, x, y, press) => {
+  // emitted volume (uL) this step; blood wells up in beads at the wound and grows until it runs
+  const emitV = (el, rate, x, y, press) => {
     if (!S.blood) return 0;
     const e = this.epi(x, y);
-    const q = rate * (1 - 0.85 * e) * (1 - el.clot) * (1 - 0.92 * press) * S.bloodAmt;
-    el.acc += q * dt;
-    const vd = (4 / 3) * Math.PI * rd * rd * rd;
-    let n = 0;
-    while (el.acc > vd && n < 6) { el.acc -= vd; n++; this.bleedVol += vd; }
-    return n;
+    const v = rate * (1 - 0.85 * e) * (1 - el.clot) * (1 - 0.92 * press) * S.bloodAmt * dt;
+    if (v > 0) { this.bleedVol += v; this.lastBleed = W.clock; }
+    return v;
   };
+  const zAt = (x, y) => W.visH(x, y);
   for (const c of this.cuts) {
     const mx = (c.ax + c.bx) / 2, my = (c.ay + c.by) / 2;
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const n = emit(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
-    for (let k = 0; k < n; k++) {
-      const t = W.rng(), side = W.rng() < 0.5 ? -1 : 1;
-      const x = PP.lerp(c.ax, c.bx, t) - c.dy * side * c.gape * 0.5, y = PP.lerp(c.ay, c.by, t) + c.dx * side * c.gape * 0.5;
+    const v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, mx, my, press);   // uL/s per mm at dermal depth (cal)
+    if (v <= 0) continue;
+    // beads along the slit, about one per 1.3 mm, each fed from its stretch of the cut
+    const nb = Math.max(1, Math.round(c.len / 1.3));
+    c.beads = c.beads || [];
+    for (let k = 0; k < nb; k++) {
+      const t = (k + 0.5) / nb, x = PP.lerp(c.ax, c.bx, t), y = PP.lerp(c.ay, c.by, t);
       // emptied cyst with an incision and no pressure: blood pools inside (hematoma, AAFP)
       const L = W.lesions.find((l) => l.drained && l.V0 > 200 && Math.hypot(l.x - x, l.y - y) < l.R && press < 0.3);
-      if (L && W.rng() < 0.6) { L.hematoma = Math.min(L.R * 0.25, L.hematoma + 0.012); continue; }
-      const i = P.spawn(x, y, 0.05, 0.13, PP.MAT.blood);
-      if (i >= 0) P.setVel(i, 0, 0, 2, 1 / 120);
+      if (L) { L.hematoma = Math.min(L.R * 0.25, L.hematoma + v * 0.6 / nb * 0.02); continue; }
+      c.beads[k] = P.well(c.beads[k] != null ? c.beads[k] : -1, x, y, zAt(x, y), v / nb, PP.MAT.blood, null, 0.35);
     }
   }
   for (const h of this.holes) {
     const press = clot(h, h.x, h.y);
-    const n = emit(h, 0.5 * PP.clamp(h.depth / lim.dermis, 0, 1.3), 0.14, h.x, h.y, press);
-    for (let k = 0; k < n; k++) {
-      const a = W.rng() * Math.PI * 2;
-      const i = P.spawn(h.x + Math.cos(a) * h.along * 0.9, h.y + Math.sin(a) * h.across * 0.9, 0.05, 0.14, PP.MAT.blood);
-      if (i >= 0) P.setVel(i, 0, 0, 2, 1 / 120);
-    }
+    const v = emitV(h, 0.5 * PP.clamp(h.depth / lim.dermis, 0, 1.3), h.x, h.y, press);
+    if (v > 0) h.bead = P.well(h.bead != null ? h.bead : -1, h.x, h.y, zAt(h.x, h.y), v, PP.MAT.blood, null, Math.max(h.along, h.across));
   }
   for (const p of this.punct) {
     const press = clot(p, p.x, p.y);
-    const n = emit(p, 0.025 * PP.clamp(p.depth / 0.3, 0.2, 2), 0.11, p.x, p.y, press);
-    for (let k = 0; k < n; k++) { const i = P.spawn(p.x, p.y, 0.05, 0.11, PP.MAT.blood); if (i >= 0) P.setVel(i, 0, 0, 1, 1 / 120); }
+    const v = emitV(p, 0.025 * PP.clamp(p.depth / 0.3, 0.2, 2), p.x, p.y, press);
+    if (v > 0) p.bead = P.well(p.bead != null ? p.bead : -1, p.x, p.y, zAt(p.x, p.y), v, PP.MAT.blood, null, 0.2);
   }
   for (const L of W.lesions) {
     if (L.bleedOpen <= 0 || L.open.r <= 0) continue;
     const el = L._bleedEl || (L._bleedEl = { clot: 0, acc: 0 });
     const press = clot(el, L.x, L.y);
     if (L.Pext > 6) el.clot = Math.max(0, el.clot - dt * 0.5);   // squeezing re-opens capillaries
-    const n = emit(el, 0.35 * L.bleedOpen * (0.5 + L.inflam), 0.12, L.x, L.y, press);
-    for (let k = 0; k < n; k++) { const i = P.spawn(L.x + L.ox, L.y + L.oy, L.domeH() + 0.1, 0.12, PP.MAT.blood); if (i >= 0) P.setVel(i, 0, 0, 6, 1 / 120); }
+    const v = emitV(el, 0.35 * L.bleedOpen * (0.5 + L.inflam), L.x, L.y, press);
+    // blood joins whatever is welling at the opening (pink, streaky serosanguinous fluid)
+    if (v > 0) { const x = L.x + L.ox, y = L.y + L.oy; L.bead = P.well(L.bead != null ? L.bead : -1, x, y, Math.max(zAt(x, y), L.domeH() * 0.6), v, PP.MAT.blood, null, L.open.r + 0.25); }
     L.bleedOpen = Math.max(0, L.bleedOpen - dt * 0.05);
   }
 };
@@ -2086,7 +2209,7 @@ PP.Tools.prototype.release = function () {
 
 PP.Tools.prototype.tryGrab = function (x, y) {
   const W = this.W, P = W.parts;
-  const grabbable = (i) => { const m = P.mat[i]; return m === PP.MAT.hair || m === PP.MAT.core || m === PP.MAT.sac || m === PP.MAT.fat || m === PP.MAT.sebum || m === PP.MAT.keratin || m === PP.MAT.packing || m === PP.MAT.molluscum || m === PP.MATOBJ.skinCore || m === PP.MAT.pus || m === PP.MAT.pearl; };
+  const grabbable = (i) => { const m = P.mat[i]; return m === PP.MAT.chalk || m === PP.MAT.hair || m === PP.MAT.core || m === PP.MAT.sac || m === PP.MAT.fat || m === PP.MAT.sebum || m === PP.MAT.keratin || m === PP.MAT.packing || m === PP.MAT.molluscum || m === PP.MATOBJ.skinCore || m === PP.MAT.pus || m === PP.MAT.pearl; };
   const anchored = (k) => { const m = P.mat[k]; return m === PP.MAT.sac || m === PP.MAT.core || m === PP.MAT.hair || m === PP.MATOBJ.skinCore; };
   let i;
   if (this.id === 'hemostat') {
@@ -2779,6 +2902,28 @@ void main(){
   o=vec4(v, min(debt,1.0), irr, br);
 }`;
 
+/* liquids on the skin (screen-space fluid, after van der Laan et al. 2009): every bead is a spherical cap with a
+   ~70 deg contact angle (base radius 1.485 r, height 1.04 r for the bead's volume). Footprints add up into one
+   thickness + composition field, so touching beads read as one liquid with menisci, not a cluster of balls. */
+PP.SH.splatVS = PP.SH.common + `
+layout(location=0) in vec2 aQ; layout(location=1) in vec4 iA; layout(location=2) in vec4 iB;
+out vec2 vL; flat out vec4 fA; flat out vec4 fB;
+void main(){ fA=iA; fB=iB; vL=aQ*1.16; vec2 w=iA.xy+aQ*iA.z*1.16; gl_Position=vec4(uvOf(w)*2.0-1.0, 0.0, 1.0); }`;
+PP.SH.splatFS = `
+in vec2 vL; flat in vec4 fA; flat in vec4 fB; out vec4 o;
+void main(){
+  // contact lines pin on skin texture: each bead's footprint is a little irregular (stable per bead)
+  float th=atan(vL.y,vL.x), sd=fB.w;
+  float wob=1.0+0.07*sin(th*3.0+sd*17.0)+0.05*sin(th*5.0+sd*29.0)+0.03*sin(th*7.0+sd*41.0);
+  float a=fA.z*wob, h=fA.w, d=length(vL)*fA.z; if(d>=a) discard;
+  float Rs=a*1.0642;                       // a / sin(70 deg)
+  float t=max(sqrt(max(Rs*Rs-d*d,0.0))-(Rs-h), 0.0);
+  o=vec4(t, t*fB.x, t*fB.y, t*fB.z);       // thickness, blood, pus, clot (x thickness)
+}`;
+PP.SH.fblurFS = `
+in vec2 vUv; out vec4 o; uniform sampler2D uT; uniform vec2 uDir;
+void main(){ vec4 s=vec4(0.0); float w=0.0; for(int k=-4;k<=4;k++){ float g=exp(-float(k*k)/8.0); s+=texture(uT, vUv+uDir*float(k))*g; w+=g; } o=s/w; }`;
+
 /* brush painting into world-space decal textures */
 PP.SH.brushVS = PP.SH.common + `
 layout(location=0) in vec2 aQ; layout(location=1) in vec4 iA; layout(location=2) in vec4 iB;
@@ -2810,6 +2955,7 @@ uniform float uBloodOn;
 uniform int uDbg;
 uniform int uHasObj;
 uniform float uDetK;
+uniform sampler2D uFluid; uniform int uHasFluid; uniform float uBloodAge;
 
 vec3 shEval(vec3 n){
   float x=n.x,y=n.y,z=n.z;
@@ -2877,7 +3023,7 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   int vis=int(b.x+0.5); float infl=b.y, headR=b.z, openR=b.w;
   float deflate=d.y, crater=d.z, punct=d.w, seed=e.x, point=e.y, hema=e.z, ext2=e.w;
   float pn=f.x;   // squeezing pressure, normalised
-  float k = (vis==18)?1.0:(vis>=15&&vis<=17)?1.25:(vis==13||vis==9||vis==10||vis==11)?1.35:1.7;
+  float k = (vis==18)?1.0:(vis>=15&&vis<=17)?1.25:(vis==13||vis==9||vis==10||vis==11||vis==21||vis==22)?1.35:(vis==23||vis==24)?0.6:(vis==25||vis==26)?1.5:1.7;
   float dome = domeP(r,R,k) + (r<R?0.0:0.0);
   float h = H*dome;
   // pores and comedones are depressions
@@ -2909,7 +3055,7 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   else if(vis==4){ float m=1.0-smoothstep(0.12,0.22,r); cm=m*(1.0-ext2); cc=vec3(0.06,0.045,0.035);
     float th=atan(q.y,q.x); float sp=pow(abs(sin(th*4.5+seed*9.0)),40.0)*(1.0-smoothstep(0.2,0.55,r))*step(0.12,r); cm=max(cm,sp*0.8*(1.0-ext2)); }
   else if(vis==6){ float m=1.0-smoothstep(R*0.7,R*0.92,r); cm=min(1.0,0.88+0.1*pn)*m*(1.0-ext2); cc=vec3(0.96,0.95,0.92); o.gloss=max(o.gloss,0.8*m); }
-  else if(vis==7||vis==8||vis==19){
+  else if(vis==7||vis==8||vis==19||vis==27){
     float m=1.0-smoothstep(headR*0.72, headR*1.02, r);
     float core=1.0-smoothstep(0.0, headR*0.8, r);
     cc = mix(c.rgb*vec3(1.02,1.0,0.94), c.rgb*vec3(1.05,0.97,0.78), core) * (0.92+0.16*vnoise(q*22.0+seed*40.0));
@@ -2923,6 +3069,27 @@ void lesion(int i, vec2 X, bool full, inout LO o){
     cm=0.85*m*point*(1.0-deflate*0.5)*c.a; o.deox += infl*0.25*halo;
   }
   else if(vis==11){ o.deox += 0.45*halo*infl; cm=0.25*dome*c.a; }
+  // abscess: red, hot, tense dome, no head; a yellow hint shows through the thinnest part when pressed
+  else if(vis==21){ o.deox += 0.35*halo*infl; cc=vec3(0.92,0.8,0.48); cm=(0.06+0.2*clamp(pn,0.0,1.0))*dome*dome*c.a; o.gloss=max(o.gloss,0.45*dome); }
+  // inflamed (ruptured) cyst: red and boggy around a dark punctum
+  else if(vis==22){ o.deox += 0.3*halo*infl; float pm=1.0-smoothstep(punct*0.6,punct*1.3,r); cc=mix(vec3(0.86,0.8,0.62), vec3(0.08,0.06,0.05), pm); cm=max(0.1*dome*c.a, pm*0.85); }
+  // blisters: a tense translucent roof over straw serum or dark blood, whiter where the epidermis lifts at the rim
+  else if(vis==23||vis==24){
+    float rim=exp(-pow((r-R*0.9)/(R*0.08),2.0));
+    vec3 fl2 = vis==23 ? vec3(0.95,0.88,0.62) : vec3(0.075,0.006,0.02);   // straw serum / dark maroon blood under the roof
+    cc = mix(fl2, vec3(0.96,0.94,0.9), rim*(vis==23?0.6:0.3)); cm = (vis==23?0.42:0.94)*dome*(1.0-deflate) + rim*0.25*(1.0-deflate*0.5);
+    o.gloss=max(o.gloss, 0.9*dome*(1.0-deflate));
+    // cut across with a #15: the roof splits into flaps that fold back as it empties; the moist pink base shows
+    if(f.w>0.5){ float ang=f.w-4.0; vec2 qa=vec2(cos(ang)*q.x+sin(ang)*q.y, -sin(ang)*q.x+cos(ang)*q.y);
+      float op=R*(0.12+0.3*deflate), inside=1.0-smoothstep(R*0.9,R*0.98,r);
+      float band=(1.0-smoothstep(op, op+0.08, abs(qa.y)))*inside;
+      cc=mix(cc, vec3(0.83,0.42,0.4), band); cm=max(cm, band*0.95); o.wet=max(o.wet, band*0.7);
+      float edge=exp(-pow((abs(qa.y)-op)/0.07,2.0))*inside; cc=mix(cc, vec3(0.93,0.9,0.85), edge*0.7); cm=max(cm, edge*0.6); }
+  }
+  // chalky deposits: gritty white (urate in a tophus is creamier, with a little crust)
+  else if(vis==25||vis==26){ float m=1.0-smoothstep(R*0.25,R*0.85,r); float grit=0.85+0.3*hash12(floor(q*28.0+seed*50.0));
+    cc=(vis==25?vec3(0.95,0.9,0.74):vec3(0.97,0.96,0.92))*grit; cm=(vis==25?0.55:0.65)*m*dome*c.a;
+    if(vis==25){ float crust=smoothstep(0.55,0.8,vnoise(q*5.0+seed*9.0))*m; cc=mix(cc, vec3(0.62,0.45,0.3), crust*0.5); } }
   else if(vis==13){ o.deox += 0.3*halo*infl; }
   else if(vis==14){ float th=atan(q.y,q.x); float lob=0.5+0.5*cos(th*6.0+seed*10.0); cm=0.5*dome*(0.55+0.45*lob)*smoothstep(R*0.12,R*0.3,r); cc=vec3(0.93,0.83,0.55);
     float tel = pow(abs(sin(th*5.0+seed*3.0+r*3.0)),60.0)*(1.0-smoothstep(R*0.5,R*1.3,r)); o.hem += tel*0.8; }
@@ -2939,6 +3106,10 @@ void lesion(int i, vec2 X, bool full, inout LO o){
     vec3 hairC=mix(vec3(0.16,0.12,0.11), vec3(0.32,0.27,0.27), 0.5+0.5*t);
     cc=mix(cc, hairC, hm); cm=max(cm, hm*mix(0.7,0.35,t));
   }
+  if(vis==27){ // folliculitis: a straight hair shaft emerging through the centre of the pustule
+    float ang=seed*6.2831853; vec2 hd=vec2(cos(ang),sin(ang)); float along=dot(q,hd), across=dot(q,vec2(-hd.y,hd.x));
+    float len=R*1.6+0.8; float hm=(1.0-smoothstep(0.016,0.032,abs(across)))*step(-0.05,along)*(1.0-smoothstep(len*0.8,len,along));
+    cc=mix(cc, vec3(0.06,0.045,0.035), hm); cm=max(cm, hm*0.95); }
   if(openR>0.0 && vis!=0 && vis!=3 && vis!=5 && vis!=4){ float hole=1.0-smoothstep(openR*0.5, openR*1.1, r); cc=mix(cc, vec3(0.32,0.06,0.04), hole*0.7); cm=max(cm, hole*0.85); o.wet=max(o.wet,hole); }
   if(crater>0.0){ float cr=exp(-r*r/(R*R*0.18)); o.hem += crater*cr*1.5; o.wet=max(o.wet,cr*0.6); if(vis==9||vis==10){ cc=mix(cc,vec3(0.62,0.6,0.46),cr); cm=max(cm,cr*0.8);} }
   if(hema>0.0){ o.deox += hema*4.0*dome; }
@@ -3056,7 +3227,8 @@ void main(){
       vec3 lc = wLay.x<1.5 ? mix(vec3(0.95,0.93,0.88), vec3(0.9,0.85,0.7), smoothstep(wLay.y+0.2, wLay.y+0.6, wd)*wLay.z)
               : wLay.x<2.5 ? mix(vec3(0.62,0.12,0.08), vec3(0.88,0.8,0.5), wLay.z)
               : wLay.x<3.5 ? vec3(0.96,0.82,0.36)*(0.85+0.3*vnoise(p*5.0))
-              : vec3(0.97,0.96,0.92)*(0.88+0.2*hash12(floor(p*30.0)));
+              : wLay.x<4.5 ? vec3(0.97,0.96,0.92)*(0.88+0.2*hash12(floor(p*30.0)))
+              : vec3(0.84,0.45,0.42);
       wc = mix(wc, lc, lay);
     }
     wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*clamp(0.55+0.4*(1.0-film.r*0.0),0.0,1.0)*smoothstep(0.1,0.6,wd));
@@ -3068,7 +3240,8 @@ void main(){
   // pus residue + blood film (wet = glossy bright red, dry = dark brown)
   alb = mix(alb, vec3(0.86,0.78,0.5), clamp(film.g,0.0,1.0)*0.55);
   float wetness = clamp(film.b,0.0,1.0);
-  vec3 bloodC = mix(vec3(0.16,0.03,0.02), vec3(0.42,0.02,0.02), wetness);
+  float oxy = 0.39*exp(-uBloodAge/0.64) + 0.61*exp(-uBloodAge/66.7);
+  vec3 bloodC = mix(mix(vec3(0.11,0.05,0.03), vec3(0.24,0.035,0.025), oxy), vec3(0.42,0.02,0.02), wetness);
   alb = mix(alb, bloodC, clamp(film.r*1.2,0.0,0.92)*uBloodOn);
   // hydrocolloid patches
   float patchM=0.0; float patchAge=0.0;
@@ -3082,6 +3255,30 @@ void main(){
     alb=mix(alb, vec3(0.05,0.04,0.035), hairM*0.85);
     alb=mix(alb, alb*vec3(0.75,0.78,0.85), (1.0-smoothstep(0.06,0.14,hr))*0.35);
   }
+  // ---- liquid on the skin: blood / pus / serum as one layer of real thickness
+  float LT=0.0, lcov=0.0, lclot=0.0; vec3 lTr=vec3(1.0), lBody=vec3(0.0), Nl=N;
+  if(uHasFluid==1){
+    vec4 fl=texS(uFluid, vUv); LT=fl.x;
+    if(LT>0.002){
+      vec2 tx=vec2(2.0/uRes.x,0.0), ty=vec2(0.0,2.0/uRes.y);
+      float lgx=(texS(uFluid,vUv+tx).x-texS(uFluid,vUv-tx).x)/(2.0*tx.x*uView.x);
+      float lgy=(texS(uFluid,vUv+ty).x-texS(uFluid,vUv-ty).x)/(2.0*ty.y*uView.y);
+      // a liquid levels out over fine relief (cut edges, pores): thicker pools follow only the broad shape below
+      float lev=smoothstep(0.02,0.15,LT);
+      Nl=normalize(vec3(-((gDef+gL)*(1.0-0.85*lev)+vec2(lgx,lgy)),1.0));
+      float fb=clamp(fl.y/LT,0.0,1.0), fp=clamp(fl.z/LT,0.0,1.0-fb), fc=1.0-fb-fp; lclot=clamp(fl.w/LT,0.0,1.0);
+      lcov=smoothstep(0.003,0.02,LT);
+      // absorption per mm: whole blood from oxyhaemoglobin spectra (Prahl/OMLC, Hb ~150 g/L): thin = bright
+      // translucent red, thick = deep red; straw serum; creamy, strongly scattering pus
+      vec3 sig=fb*vec3(0.3,28.0,33.0)*(1.0+0.6*lclot) + fp*vec3(1.2,2.2,6.5) + fc*vec3(0.03,0.08,0.45);
+      // whole blood is turbid (red cells scatter): beyond ~0.1 mm it hides the skin and shows its own deep crimson;
+      // only thin films stay translucent bright red. Pus is opaque cream; serum stays clear.
+      float pusOp=1.0-exp(-fp*LT*14.0), bloodOp=1.0-exp(-fb*LT*9.0);
+      lTr=exp(-sig*2.0*LT)*(1.0-pusOp)*(1.0-0.92*bloodOp);
+      lBody=pusOp*vec3(0.85,0.76,0.48) + bloodOp*mix(vec3(0.16,0.006,0.008), vec3(0.065,0.01,0.008), lclot);
+    }
+  }
+  alb = mix(alb, alb*lTr, lcov);
   // ---- lighting
   vec3 Ne = toEnv(N);
   vec3 Lk0 = normalize(uKey);
@@ -3114,7 +3311,15 @@ void main(){
   spec += (0.5*keySpec(N,Lk0,0.45,0.028) + oil*0.9*keySpec(N,Lk0,0.24,0.028) + wet*1.2*keySpec(N,Lk0,0.09,0.02) + lo.gloss*1.6*keySpec(N,Lk0,0.11,0.03))*0.55*(1.0-sh2);
   spec += lo.gloss*0.8*F*envSpec(R,0.1)*uExposure*0.6;
   spec *= mix(1.0,0.45,sh2)*ao;
-  float skinH = H;
+  if(lcov>0.0){
+    // the liquid surface: its own meniscus normal, a glassy wet highlight (dull once clotted), and light its body scatters back
+    vec3 Rl=reflect(-V,Nl); float nvl=max(Nl.z,1e-3);
+    float Fl=0.02+0.98*pow(1.0-nvl,5.0), rl=mix(0.035,0.3,lclot);
+    vec3 specL=Fl*envSpec(Rl,rl)*uExposure*0.78 + keySpec(Nl,Lk0,max(rl,0.05),0.02)*0.55*(1.0-sh2);
+    vec3 irrL=0.42*shEval(toEnv(Nl))*uExposure + 0.86*vec3(1.0,0.98,0.95)*max(0.0,dot(Nl,Lk0))*(1.0-sh2);
+    spec = mix(spec, specL, lcov) + lBody*irrL*lcov;
+  }
+  float skinH = H + LT;
   // patch: semi-transparent film over everything
   if(patchM>0.0){ float whiten=clamp(patchAge,0.0,1.0); alb=mix(alb, mix(vec3(0.82,0.66,0.52), vec3(0.93,0.9,0.86), whiten), patchM*(0.45+0.5*whiten)); spec += patchM*0.03*envSpec(R,0.12); }
 
@@ -3128,7 +3333,7 @@ void main(){
     vec3 n2 = vec3(ob.zw, sqrt(max(0.0,1.0-dot(ob.zw,ob.zw))));
     // procedural surface detail per material
     vec2 wp = p*vec2(1.0);
-    if(mat==6||mat==9||mat==13) n2 = normalize(n2 + vec3(vnoise(wp*7.0)-0.5, vnoise(wp*7.0+5.0)-0.5, 0.0)*1.1 + vec3(vnoise(wp*19.0)-0.5, vnoise(wp*19.0+2.0)-0.5, 0.0)*0.5);
+    if(mat==6||mat==9||mat==13||mat==18) n2 = normalize(n2 + vec3(vnoise(wp*7.0)-0.5, vnoise(wp*7.0+5.0)-0.5, 0.0)*1.1 + vec3(vnoise(wp*19.0)-0.5, vnoise(wp*19.0+2.0)-0.5, 0.0)*0.5);
     if(mat==8) n2 = normalize(n2 + vec3(vnoise(wp*3.0)-0.5, vnoise(wp*3.0+3.0)-0.5, 0.0)*0.35);
     if(mat==31||mat==35) n2 = normalize(n2 + vec3(vnoise(wp*14.0)-0.5, vnoise(wp*14.0+2.0)-0.5,0.0)*0.9);
     vec3 n2e = toEnv(n2);
@@ -3138,7 +3343,7 @@ void main(){
     if(mat==6) base *= 0.86 + 0.22*vnoise(wp*5.0);
     if(mat==1){ rough=0.22; } else if(mat==2||mat==15){ rough=0.1; trans=0.35; } else if(mat==3){ rough=0.05; trans=0.85; base=vec3(0.95,0.9,0.7); }
     else if(mat==4){ rough=0.04; trans=1.0; } else if(mat==7){ rough=0.06; trans=0.6; }
-    else if(mat==5){ rough=0.35; } else if(mat==6){ rough=0.7; } else if(mat==8){ rough=0.18; }
+    else if(mat==5){ rough=0.35; } else if(mat==6){ rough=0.7; } else if(mat==18){ rough=0.93; base*=0.9+0.14*vnoise(wp*30.0); } else if(mat==8){ rough=0.18; }
     else if(mat==9){ rough=0.6; } else if(mat==10){ rough=0.28; } else if(mat==11){ rough=0.14; trans=0.3; } else if(mat==12){ rough=0.18; }
     else if(mat==13){ rough=0.5; } else if(mat==14){ rough=0.9; }
     else if(mat==30){ rough=mix(0.48,0.16,oc.a); trans=0.62; } else if(mat==31){ rough=0.95; } else if(mat==32){ rough=0.12; metal=1.0; f0=0.85; }
@@ -3271,6 +3476,8 @@ PP.Renderer = function (canvas, W) {
     sss: G.program('sss', SH.fsVS, SH.sssFS),
     comp: G.program('comp', SH.fsVS, SH.compFS),
     post: G.program('post', SH.fsVS, SH.postFS),
+    splat: G.program('splat', SH.splatVS, SH.splatFS),
+    fblur: G.program('fblur', SH.fsVS, SH.fblurFS),
   };
   this.scale = PP.TEST ? 0.75 : PP.Renderer.scaleFor(PP.storage.get('quality', 'high'));
   this.rt = {};
@@ -3329,6 +3536,8 @@ PP.Renderer.prototype.resize = function (ds) {
   this.rt.obj = G.target(w, h, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
   this.rt.objS = G.target(w, h, [F16]);
   this.rt.skin = G.target(w, h, [F16, F16, F16]);
+  this.rt.fluid = G.target(hw, hh, [F16]);
+  this.rt.fluid2 = G.target(hw, hh, [F16]);
   this.rt.sssA = G.target(hw, hh, [F16]);
   this.rt.sssB = G.target(hw, hh, [F16]);
   this.rt.comp = G.target(w, h, [F16]);
@@ -3439,12 +3648,14 @@ PP.Renderer.prototype.uploadLesions = function () {
     const plugExt = L.plug ? (L.plug.out ? 1 : L.plug.ext / L.plug.L) : (L.coreOut || (L.T.vis === 20 && L.done) ? 1 : 0);
     const pn0 = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
     const headR = (T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45)
-      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
+      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 || T.vis === 27 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
     let openVis = L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
     // squeezing pressure, normalised (~30 kPa = 1): heads swell, pores dilate, puncta gape
     const pn = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
     if (T.open === 'open') openVis = L.open.r * (1 + 0.3 * pn);
-    const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' ? L.pusCol : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
+    const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'folliculitis' || L.type === 'abscess' ? L.pusCol
+      : L.type === 'blister' ? PP.hex2lin('#f0e2b0') : L.type === 'bloodBlister' ? PP.hex2lin('#5a0d14') : L.type === 'inflamedCyst' ? PP.hex2lin('#d9c9a0')
+      : L.type === 'tophus' ? PP.hex2lin('#f1ead2') : L.type === 'calcinosis' ? PP.hex2lin('#f4f2ea') : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
     const vis = T.vis;
     const vals = [
       cx, cy, L.R, H,
@@ -3452,7 +3663,7 @@ PP.Renderer.prototype.uploadLesions = function () {
       cc[0], cc[1], cc[2], L.type === 'furuncle' || L.type === 'carbuncle' ? 1 : f,
       L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, (L.punctum || 0) * (1 + 0.8 * pn),
       L.seed, L.pointing, L.hematoma, plugExt,
-      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
+      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, L.flapAng != null ? L.flapAng + 4 : 0,
     ];
     d.set(vals, o);
   });
@@ -3657,6 +3868,22 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   G.bindTex(0, this.rt.obj.texs[0], P.smooth.u.uObj); gl.uniform1f(P.smooth.u.uPxMm, w / W.cam.vw);
   G.drawFS();
 
+  // 5b. liquids on the skin: bead footprints summed into one thickness + composition field, then blurred
+  const ns = this.buildSplats();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid.fb); gl.viewport(0, 0, dw, dh);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (ns) {
+    gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(P.splat.p); this.camUniforms(P.splat, dw, dh);
+    G.drawInstances(this.splatData, ns);
+    gl.disable(gl.BLEND);
+    // surface tension flattens a puddle: smooth the summed caps over ~0.25 mm (curvature-flow-like) so pools read as one surface
+    const FB = P.fblur, step = (0.12 / W.cam.vw) > 1 / dw ? 0.12 / W.cam.vw : 1 / dw, stepY = step * (W.cam.vw / W.cam.vh) * (dw / dh) * (dh / dw);
+    gl.useProgram(FB.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid2.fb); G.bindTex(0, this.rt.fluid.texs[0], FB.u.uT); gl.uniform2f(FB.u.uDir, step, 0); G.drawFS();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid.fb); G.bindTex(0, this.rt.fluid2.texs[0], FB.u.uT); gl.uniform2f(FB.u.uDir, 0, Math.max(stepY, 1 / dh)); G.drawFS();
+  }
+
   // 6. skin + object shading
   const set = W.curSet, det = W.detSet;
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.skin.fb); gl.viewport(0, 0, w, h);
@@ -3667,6 +3894,8 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   G.bindTex(7, this.physA.texs[0], S.u.uPhys); G.bindTex(8, this.film.texs[0], S.u.uFilm); G.bindTex(9, this.dummy, S.u.uMarks);
   G.bindTex(10, this.envAtlas, S.u.uEnvP); G.bindTex(11, this.heatTex, S.u.uHeat); G.bindTex(12, this.lesTex, S.u.uLes);
   G.bindTex(14, set.detail, S.u.uDetail);
+  G.bindTex(15, this.rt.fluid.texs[0], S.u.uFluid); gl.uniform1i(S.u.uHasFluid, ns ? 1 : 0);
+  gl.uniform1f(S.u.uBloodAge, W.wounds.lastBleed != null ? Math.max(0, W.clock - W.wounds.lastBleed) / 3600 : 0);
   gl.activeTexture(gl.TEXTURE13); gl.bindTexture(gl.TEXTURE_2D, this.gridTex.t); gl.uniform1i(S.u.uLGrid, 13);
   gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4); gl.uniform1i(S.u.uHasObj, n ? 1 : 0);
   gl.uniform1f(S.u.uTile, set.meta.tile_mm); gl.uniform1f(S.u.uHmm, set.meta.height_mm * W.reliefK);
@@ -3741,11 +3970,26 @@ PP.Renderer.prototype.warm = function () {
   T.primRaw([0, 0, 0.5, 0.08, 4, 0, 2, 0, 3, PP.MATOBJ.chrome, 3, 1, 2.2, 0, 0, 0]);
   const a = P.spawn(1, 1, 0.3, 0.3, PP.MAT.blood), b = P.spawn(1.5, 1, 0.3, 0.3, PP.MAT.pus), c = P.spawn(1.8, 1, 0.3, 0.3, PP.MAT.pus);
   if (b >= 0 && c >= 0) P.link(b, c, 0.3, 0.1, 2);
+  if (a >= 0) P.onSkin[a] = 1;
   this.brush(0, 0, 1, [0, 0, 0.001, 0], 'add');
   this.drops.push({ u: 0.5, v: 0.5, r: 0.001, a: 0.01, m: 0, vy: 0 });
   this.render(1 / 60, true);
   W.phys.contacts.length = 0; T.nPrim = 0; P.clear(); this.drops.length = 0;
   this.render(1 / 60, true);
+};
+
+// beads on the skin -> spherical-cap footprints (centre, base radius, cap height | blood, pus, clot fractions)
+PP.Renderer.prototype.buildSplats = function () {
+  const P = this.W.parts, d = this.splatData || (this.splatData = new Float32Array(16 * 7000));
+  let n = 0;
+  for (let i = 0; i < P.hi && n < 7000; i++) {
+    if (!P.alive[i] || !P.onSkin[i] || !P.isLiquid(P.mat[i]) || P.next[i] >= 0 || P.prev[i] >= 0) continue;
+    const r = P.r[i], o = n * 16;
+    d[o] = P.x[i]; d[o + 1] = P.y[i]; d[o + 2] = 1.485 * r; d[o + 3] = 1.04 * r;   // base radius, cap height (70 deg)
+    d[o + 4] = P.fb[i]; d[o + 5] = P.fp[i]; d[o + 6] = P.clotOf(i); d[o + 7] = (i * 0.618034) % 1;
+    n++;
+  }
+  return n;
 };
 
 // particles + tool primitives -> instance buffer
@@ -3762,6 +4006,7 @@ PP.Renderer.prototype.buildInstances = function () {
   for (let i = 0; i < P.hi && n < maxN - 200; i++) {
     if (!P.alive[i]) continue;
     const j = P.next[i], m = P.mat[i];
+    if (P.onSkin[i] && j < 0 && P.prev[i] < 0 && P.isLiquid(m)) continue;
     // material resting on a squeezed fold rides up with it (visual lift, see World.buildHeightGrid)
     const li = W.liftAt(P.x[i], P.y[i]);
     if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i] + li, P.r[i], P.x[j], P.y[j], P.z[j] + W.liftAt(P.x[j], P.y[j]), P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
@@ -4473,9 +4718,12 @@ PP.Body.prototype.uploadLesions = function () {
       const open = L.open && L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
       const cr = L.popped || L.crater > 0 ? Math.max(open, L.R * 0.3 * Math.min(1, (L.crater || 0) + 0.4)) : open * 0.6;
       let headR = 0;
-      if ((vis === 7 || vis === 8 || vis === 1 || vis === 2 || vis === 6) && !L.popped && f > 0.3) headR = vis === 1 || vis === 2 ? L.R * 0.35 : vis === 6 ? L.R * 0.6 : L.R * 0.5;
+      if ((vis === 7 || vis === 8 || vis === 27 || vis === 1 || vis === 2 || vis === 6) && !L.popped && f > 0.3) headR = vis === 1 || vis === 2 ? L.R * 0.35 : vis === 6 ? L.R * 0.6 : L.R * 0.5;
+      if ((vis === 23 || vis === 24) && f > 0.2) headR = L.R * 0.85;
+      if (vis === 25 || vis === 26) headR = L.R * 0.6;
       if ((vis === 9 || vis === 10) && !L.popped) headR = L.R * (0.12 + 0.2 * (L.pointing || 0)) * (L.pointing > 0.3 ? 1 : 0);
-      const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'ingrown' ? L.pusCol : vis === 6 ? PP.hex2lin('#f4efe2') : PP.hex2lin('#f0ead8');
+      const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'ingrown' || L.type === 'folliculitis' ? L.pusCol
+        : vis === 23 ? PP.hex2lin('#ecdcae') : vis === 24 ? PP.hex2lin('#4a0b12') : vis === 25 || vis === 26 ? PP.hex2lin('#f2eee2') : vis === 6 ? PP.hex2lin('#f4efe2') : PP.hex2lin('#f0ead8');
       const dark = vis === 0 || vis === 3 || vis === 4 ? 1 : vis === 5 ? 0.35 : 0;
       d.set([L.x + L.ox, L.y + L.oy, L.R, Math.max(0, L.domeH()),
         headR, (L.inflam || 0) + (L.deep || 0) * 0.4 + (L.irrit || 0) * 0.5, dark, cr,
@@ -4814,7 +5062,7 @@ PP.World = function () {
   this.gravity = [0, -9000, -3000];
   this.lensZ = 125;
   this.grid = { n: 0 };
-  this.ctx = { phys: this.phys, parts: this.parts, S: this.S, heatAt: (x, y) => this.wounds.heatAt(x, y), fx: null, rng: this.rng, clock: 0 };
+  this.ctx = { phys: this.phys, parts: this.parts, S: this.S, heatAt: (x, y) => this.wounds.heatAt(x, y), skinH: (x, y) => this.visH(x, y), fx: null, rng: this.rng, clock: 0 };
 };
 
 PP.World.prototype.setArea = function (id) {
@@ -4862,19 +5110,29 @@ PP.World.prototype.newPatch = function (seed) {
 // scatter an area's typical blemish mix over its patch (big ones first, no overlaps)
 PP.World.prototype.genLesions = function (A, rng, accept) {
   const out = [], placed = [];
-  const tryPlace = (type, d) => {
+  const tryPlace = (type, d, cl) => {
     const T = PP.LTYPES[type];
-    if (!this.S.surgical && ['epidermoid', 'pilar', 'lipoma', 'carbuncle', 'furuncle', 'steatocystoma'].includes(type)) return;
+    if (!T) return;
+    if (!this.S.surgical && ['epidermoid', 'pilar', 'lipoma', 'carbuncle', 'furuncle', 'steatocystoma', 'abscess', 'inflamedCyst'].includes(type)) return;
     for (let k = 0; k < 60; k++) {
       const span = A.size * 0.42;
-      const x = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1), y = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      // clusters (Favre-Racouchot comedones, folliculitis) pack tightly around one centre
+      const x = cl ? cl.x + rng.range(-cl.r, cl.r) : rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      const y = cl ? cl.y + rng.range(-cl.r, cl.r) : rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      if (cl && Math.hypot(x - cl.x, y - cl.y) > cl.r) continue;
       const R = (d || (T.d[0] + T.d[1]) / 2) / 2;
-      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + (type === 'filament' ? 0.8 : 2.5)) && (!accept || accept(x, y, R));
-      if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R }); return; }
+      const gap = cl ? 0.5 : type === 'filament' ? 0.8 : 2.5;
+      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + Math.min(gap, p.gap != null ? p.gap : 2.5)) && (!accept || accept(x, y, R));
+      if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R, gap: cl ? 0.5 : null }); return; }
     }
   };
-  const mix = A.mix.slice().sort((a, b) => PP.LTYPES[b[0]].d[1] - PP.LTYPES[a[0]].d[1]);
-  for (const [type, n] of mix) for (let k = 0; k < n; k++) tryPlace(type);
+  const mix = A.mix.filter((m) => PP.LTYPES[m[0]]).sort((a, b) => PP.LTYPES[b[0]].d[1] - PP.LTYPES[a[0]].d[1]);
+  for (const [type, n, opt] of mix) {
+    if (opt && opt.cluster) {
+      const span = A.size * 0.42 - opt.cluster / 2, cl = { x: rng.range(-span, span), y: rng.range(-span, span), r: opt.cluster / 2 };
+      for (let k = 0; k < n; k++) tryPlace(type, null, cl);
+    } else for (let k = 0; k < n; k++) tryPlace(type);
+  }
   return out;
 };
 
@@ -5065,13 +5323,13 @@ PP.World.prototype.particleWorld = function () {
     skinH: (x, y) => W.skinH(x, y),
     onLens: (i) => W.lensHit(i),
     onSettle: (i) => {
-      const P = W.parts, m = P.mat[i];
-      const kind = m === PP.MAT.blood || m === PP.MAT.bloodyPus ? 'blood' : m === PP.MAT.serum ? 'serum' : 'pus';
+      const P = W.parts, kind = P.fb[i] > 0.3 ? 'blood' : P.fp[i] > 0.5 ? 'pus' : 'serum';
       W.decals.paint(P.x[i], P.y[i], P.r[i] * 1.6, kind, 1);
     },
-    onTrail: (i) => {
-      const P = W.parts, m = P.mat[i];
-      if (W.rng() < 0.35) W.decals.paint(P.x[i], P.y[i], P.r[i] * 0.7, m === PP.MAT.blood ? 'blood' : 'serum', 0.5);
+    // the thin film a running bead leaves behind: a continuous wet stain along its path
+    onTrail: (i, dist, w) => {
+      const P = W.parts, kind = P.fb[i] > 0.3 ? 'blood' : P.fp[i] > 0.5 ? 'pus' : 'serum';
+      W.decals.paint(P.x[i], P.y[i], w * 0.36, kind, PP.clamp(dist * 3, 0.15, 0.6));
     },
     onBreak: () => {},
     colliders: [],
@@ -5105,6 +5363,9 @@ PP.World.prototype.step = function (dt) {
   pw.area = this.area; pw.gravity = this.gravity;
   const sub = 2;
   for (let k = 0; k < sub; k++) this.parts.step(dt / sub, pw);
+  // thin films evaporate: wetness fades over a few minutes (blood stains stay, darkening as they dry)
+  this._evap = (this._evap || 0) + dt;
+  if (this._evap > 0.7) { this._evap = 0; this.render.brush(0, 0, this.area.size * 0.75, [0, 0, 1 / 255, 0], 'sub'); }
   // pain decays; flinch cooldown
   this.painLevel = Math.max(0, this.painLevel - dt * 0.35);
   if (this._flinchCool) this._flinchCool = Math.max(0, this._flinchCool - dt);
@@ -6102,6 +6363,84 @@ PP.Tests.prototype.all = async function () {
     this.ok('blade_reactions', gush && solidOk && cystOk && l11 <= 3.01 && l15 > 7, { gush, events: G.events, solidOk, inflam: cP && +cP.inflam.toFixed(2), cystOk, len11: +l11.toFixed(2), len15: +l15.toFixed(2) });
   }
 
+  // 24. blood wells up as one growing bead at a puncture (not a spray of droplets)
+  {
+    await this.setup('cheek', [], { zoom: 2 });
+    W.wounds.addPuncture(0, 0, 0.6);
+    let maxBeads = 0;
+    for (let k = 0; k < 6; k++) { this.step(0.5); let n = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.isLiquid(P.mat[i]) && Math.hypot(P.x[i], P.y[i]) < 3) n++; maxBeads = Math.max(maxBeads, n); }
+    const bi = W.wounds.punct[0].bead, r = bi >= 0 && P.alive[bi] ? P.r[bi] : 0;
+    this.ok('bead_wells', maxBeads <= 2 && r > 0.15 && P.onSkin[bi], { maxBeads, r: +r.toFixed(3) });
+  }
+  // 25. Furmidge pinning: on the cheek a small bead holds, a big one lets go and runs downhill leaving a wet trail
+  //     (and shrinking as it goes); on the flat-lying back the same big bead stays put
+  {
+    const run = async (area, r) => {
+      await this.setup(area, [], { zoom: 1 });
+      const V = (4 / 3) * Math.PI * r ** 3, i = P.well(-1, 0, 0, W.visH(0, 0), V, PP.MAT.blood, null, 0.3);
+      this.step(1.5); return { dy: P.alive[i] ? P.y[i] : -99, r: P.alive[i] ? P.r[i] : 0 };
+    };
+    const small = await run('cheek', 0.9), big = await run('cheek', 1.8), back = await run('back', 1.8);
+    this.ok('bead_runs', Math.abs(small.dy) < 0.3 && big.dy < -3 && big.r < 1.8 && Math.abs(back.dy) < 0.3,
+      { smallMoved: +small.dy.toFixed(2), bigMoved: +big.dy.toFixed(2), bigR: +big.r.toFixed(2), backMoved: +back.dy.toFixed(2) });
+  }
+  // 26. one liquid surface: a bead is drawn as a thickness field (cap profile with a meniscus), not a sphere object
+  {
+    await this.setup('back', [], { zoom: 2 });
+    const i = P.well(-1, 0, 0, W.visH(0, 0), (4 / 3) * Math.PI, PP.MAT.blood, null, 0.3);   // r = 1 mm
+    this.step(0.05); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, C = W.cam, rt = R.rt.fluid;
+    const rd = (x) => { gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fb); const px = new Float32Array(4);
+      gl.readPixels(Math.round(((x - C.x) / C.vw + 0.5) * rt.w), Math.round(((P.y[i] - C.y) / C.vh + 0.5) * rt.h), 1, 1, gl.RGBA, gl.FLOAT, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px; };
+    const c0 = rd(P.x[i]), mid = rd(P.x[i] + 0.75), out = rd(P.x[i] + 2.2);
+    this.ok('fluid_continuous', c0[0] > 0.6 && c0[0] < 1.15 && mid[0] > 0.1 && mid[0] < c0[0] && out[0] < 0.02 && c0[1] / c0[0] > 0.95 && R.lastInst - T.nPrim === 0,
+      { centre: +c0[0].toFixed(3), mid: +mid[0].toFixed(3), outside: +out[0].toFixed(4), bloodFrac: +(c0[1] / Math.max(c0[0], 1e-6)).toFixed(2), sphereObjects: R.lastInst - T.nPrim });
+  }
+  // 27. clotting and drying: shed blood gels after the bleeding time; a 10 min time-lapse dries the wet film
+  {
+    await this.setup('cheek', [], { zoom: 2 });
+    const i = P.well(-1, 0, 0, W.visH(0, 0), 0.5, PP.MAT.blood, null, 0.3);
+    const c0 = P.clotOf(i); P.age[i] = 400; const c1 = P.clotOf(i);
+    W.decals.paint(3, 3, 1.5, 'blood', 1); W.render.render(1 / 60, true);
+    const R = W.render, gl = R.gl, s0 = W.area.size;
+    const film = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, R.film.fb); const px = new Uint8Array(4); gl.readPixels(Math.round((3 / s0 + 0.5) * 1023), Math.round((3 / s0 + 0.5) * 1023), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return px; };
+    const f0 = film(); W.timelapse(600); W.render.render(1 / 60, true); const f1 = film();
+    this.ok('blood_dries', c0 < 0.05 && c1 > 0.8 && f0[2] > 100 && f1[2] < f0[2] * 0.2 && f1[0] > 60, { clotFresh: +c0.toFixed(2), clotOld: +c1.toFixed(2), wetBefore: f0[2], wetAfter: f1[2], stain: f1[0] });
+  }
+  // 28. the new lesions behave as they should
+  {
+    const out = {};
+    // abscess: a #15 incision releases a gush at once (tense), then squeezing drains it; loculations slow it until broken
+    let [Ab] = await this.setup('back', [['abscess', 0, 0, 24]], { zoom: 0.6 });
+    this.drag('blade15', -8, 0, 8, 0, 0.5); this.drag('blade15', -8, 0, 8, 0, 0.5); this.drag('blade15', -8, 0, 8, 0, 0.5);
+    out.abscessGush = Ab.events.includes('gush');
+    this.hold('fingers', 0, 0, 4, { spread: 17 }); out.abscessExt = +(Ab.ext / Ab.V0).toFixed(2);
+    // inflamed cyst: no sac; cheesy keratin plus bloody pus
+    let [Ic] = await this.setup('back', [['inflamedCyst', 0, 0, 14]], { zoom: 1 });
+    this.drag('blade11', 0, -1.2, 0, 1.3, 0.25); this.hold('fingers', 0, 0, 6, { spread: 10 });
+    let ker = 0, bloody = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i]) { if (P.mat[i] === PP.MAT.keratin) ker++; if (P.isLiquid(P.mat[i]) && P.fb[i] > 0.1) bloody++; }
+    out.cyst = { sac: Ic.sac, keratin: ker, bloody };
+    // friction blister: a needle at the edge drains it and the roof stays (deflates)
+    let [Bl] = await this.setup('shoulder' in PP.AREAS ? 'shoulder' : 'back', [['blister', 0, 0, 10]], { zoom: 1.4 });
+    this.hold('needle', 4.4, 0, 0.05); this.step(6);
+    out.blister = { opened: Bl.open.r > 0, fill: +Bl.fill().toFixed(2), flap: Bl.flapAng != null };
+    // a #15 across a blister splits the roof into flaps
+    let [Bf] = await this.setup('back', [['blister', 0, 0, 10]], { zoom: 1.4 }); this.drag('blade15', -6, 0, 6, 0, 0.4);
+    out.flaps = Bf.flapAng != null;
+    // gouty tophus: chalk extrudes
+    let [To] = await this.setup('cheek', [['tophus', 0, 0, 6]], { zoom: 2 }); this.drag('blade11', 0, -0.6, 0, 0.7, 0.2); this.hold('fingers', 0, 0, 4, { spread: 6.5 });
+    let chalk = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.mat[i] === PP.MAT.chalk) chalk++;
+    out.tophusChalk = chalk;
+    // clusters: Favre-Racouchot comedones and folliculitis come in tight groups
+    const g1 = W.genLesions(Object.assign({}, PP.AREAS.cheek, { mix: [['solarComedone', 7, { cluster: 12 }]] }), PP.rng(5));
+    const g2 = W.genLesions(Object.assign({}, PP.AREAS.beard, { mix: [['folliculitis', 7, { cluster: 16 }]] }), PP.rng(6));
+    const spreadOf = (g) => { let m = 0; for (const a of g) for (const b of g) m = Math.max(m, Math.hypot(a.x - b.x, a.y - b.y)); return m; };
+    out.clusters = { favre: g1.length, favreSpread: +spreadOf(g1).toFixed(1), folli: g2.length, folliSpread: +spreadOf(g2).toFixed(1) };
+    this.ok('new_lesions', out.abscessGush && out.abscessExt > 0.25 && out.cyst.sac === null && out.cyst.keratin > 0 && out.cyst.bloody > 0
+      && out.blister.opened && out.blister.fill < 0.5 && !out.blister.flap && out.flaps && out.tophusChalk > 0
+      && g1.length >= 5 && spreadOf(g1) < 15 && g2.length >= 5 && spreadOf(g2) < 19, out);
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -6186,6 +6525,14 @@ PP.Tests.prototype.visual = async function (name) {
     if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
     else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
     if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
+  } else if (name === 'newles') {
+    await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
+  } else if (name === 'clusters') {
+    await this.setup(PP.params.get('area') || 'cheek', [], { zoom: +(PP.params.get('zoom') || 1.2) });
+    const t = PP.params.get('les') || 'solarComedone';
+    W.lesions = W.genLesions(Object.assign({}, W.area, { mix: [[t, +(PP.params.get('n') || 7), { cluster: +(PP.params.get('c') || 12) }]] }), PP.rng(+(PP.params.get('seed') || 3)));
+    const cx = W.lesions.reduce((s2, L) => s2 + L.x, 0) / Math.max(1, W.lesions.length), cy = W.lesions.reduce((s2, L) => s2 + L.y, 0) / Math.max(1, W.lesions.length);
+    W.cam.x = W.cam.tx = cx; W.cam.y = W.cam.ty = cy; W.fx.patchChanged();
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];

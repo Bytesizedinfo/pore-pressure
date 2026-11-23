@@ -27,7 +27,7 @@ PP.World = function () {
   this.gravity = [0, -9000, -3000];
   this.lensZ = 125;
   this.grid = { n: 0 };
-  this.ctx = { phys: this.phys, parts: this.parts, S: this.S, heatAt: (x, y) => this.wounds.heatAt(x, y), fx: null, rng: this.rng, clock: 0 };
+  this.ctx = { phys: this.phys, parts: this.parts, S: this.S, heatAt: (x, y) => this.wounds.heatAt(x, y), skinH: (x, y) => this.visH(x, y), fx: null, rng: this.rng, clock: 0 };
 };
 
 PP.World.prototype.setArea = function (id) {
@@ -75,19 +75,29 @@ PP.World.prototype.newPatch = function (seed) {
 // scatter an area's typical blemish mix over its patch (big ones first, no overlaps)
 PP.World.prototype.genLesions = function (A, rng, accept) {
   const out = [], placed = [];
-  const tryPlace = (type, d) => {
+  const tryPlace = (type, d, cl) => {
     const T = PP.LTYPES[type];
-    if (!this.S.surgical && ['epidermoid', 'pilar', 'lipoma', 'carbuncle', 'furuncle', 'steatocystoma'].includes(type)) return;
+    if (!T) return;
+    if (!this.S.surgical && ['epidermoid', 'pilar', 'lipoma', 'carbuncle', 'furuncle', 'steatocystoma', 'abscess', 'inflamedCyst'].includes(type)) return;
     for (let k = 0; k < 60; k++) {
       const span = A.size * 0.42;
-      const x = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1), y = rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      // clusters (Favre-Racouchot comedones, folliculitis) pack tightly around one centre
+      const x = cl ? cl.x + rng.range(-cl.r, cl.r) : rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      const y = cl ? cl.y + rng.range(-cl.r, cl.r) : rng.range(-span, span) * (type === 'filament' ? 0.6 : 1);
+      if (cl && Math.hypot(x - cl.x, y - cl.y) > cl.r) continue;
       const R = (d || (T.d[0] + T.d[1]) / 2) / 2;
-      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + (type === 'filament' ? 0.8 : 2.5)) && (!accept || accept(x, y, R));
-      if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R }); return; }
+      const gap = cl ? 0.5 : type === 'filament' ? 0.8 : 2.5;
+      const ok = placed.every((p) => Math.hypot(p.x - x, p.y - y) > p.R + R + Math.min(gap, p.gap != null ? p.gap : 2.5)) && (!accept || accept(x, y, R));
+      if (ok) { const L = new PP.Lesion(out.length, type, x, y, rng, { d }); out.push(L); placed.push({ x, y, R: L.R, gap: cl ? 0.5 : null }); return; }
     }
   };
-  const mix = A.mix.slice().sort((a, b) => PP.LTYPES[b[0]].d[1] - PP.LTYPES[a[0]].d[1]);
-  for (const [type, n] of mix) for (let k = 0; k < n; k++) tryPlace(type);
+  const mix = A.mix.filter((m) => PP.LTYPES[m[0]]).sort((a, b) => PP.LTYPES[b[0]].d[1] - PP.LTYPES[a[0]].d[1]);
+  for (const [type, n, opt] of mix) {
+    if (opt && opt.cluster) {
+      const span = A.size * 0.42 - opt.cluster / 2, cl = { x: rng.range(-span, span), y: rng.range(-span, span), r: opt.cluster / 2 };
+      for (let k = 0; k < n; k++) tryPlace(type, null, cl);
+    } else for (let k = 0; k < n; k++) tryPlace(type);
+  }
   return out;
 };
 
@@ -278,13 +288,13 @@ PP.World.prototype.particleWorld = function () {
     skinH: (x, y) => W.skinH(x, y),
     onLens: (i) => W.lensHit(i),
     onSettle: (i) => {
-      const P = W.parts, m = P.mat[i];
-      const kind = m === PP.MAT.blood || m === PP.MAT.bloodyPus ? 'blood' : m === PP.MAT.serum ? 'serum' : 'pus';
+      const P = W.parts, kind = P.fb[i] > 0.3 ? 'blood' : P.fp[i] > 0.5 ? 'pus' : 'serum';
       W.decals.paint(P.x[i], P.y[i], P.r[i] * 1.6, kind, 1);
     },
-    onTrail: (i) => {
-      const P = W.parts, m = P.mat[i];
-      if (W.rng() < 0.35) W.decals.paint(P.x[i], P.y[i], P.r[i] * 0.7, m === PP.MAT.blood ? 'blood' : 'serum', 0.5);
+    // the thin film a running bead leaves behind: a continuous wet stain along its path
+    onTrail: (i, dist, w) => {
+      const P = W.parts, kind = P.fb[i] > 0.3 ? 'blood' : P.fp[i] > 0.5 ? 'pus' : 'serum';
+      W.decals.paint(P.x[i], P.y[i], w * 0.36, kind, PP.clamp(dist * 3, 0.15, 0.6));
     },
     onBreak: () => {},
     colliders: [],
@@ -318,6 +328,9 @@ PP.World.prototype.step = function (dt) {
   pw.area = this.area; pw.gravity = this.gravity;
   const sub = 2;
   for (let k = 0; k < sub; k++) this.parts.step(dt / sub, pw);
+  // thin films evaporate: wetness fades over a few minutes (blood stains stay, darkening as they dry)
+  this._evap = (this._evap || 0) + dt;
+  if (this._evap > 0.7) { this._evap = 0; this.render.brush(0, 0, this.area.size * 0.75, [0, 0, 1 / 255, 0], 'sub'); }
   // pain decays; flinch cooldown
   this.painLevel = Math.max(0, this.painLevel - dt * 0.35);
   if (this._flinchCool) this._flinchCool = Math.max(0, this._flinchCool - dt);

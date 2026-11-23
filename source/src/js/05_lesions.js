@@ -21,7 +21,8 @@ PP.Lesion = function (id, type, x, y, rng, opt = {}) {
   this.roofS = T.roofS * (0.85 + 0.3 * rng()); this.wallS = T.wallS * (0.85 + 0.3 * rng());
   this.inflam = { pustule: 0.55, giant: 0.6, furuncle: 0.9, carbuncle: 0.95, pseudocyst: 0.75, papule: 0.6, nodule: 0.8,
     ingrown: 0.45, molluscum: 0.05, sebhyper: 0.08, epidermoid: 0.05, pilar: 0, steatocystoma: 0.03, lipoma: 0,
-    whitehead: 0.05, macrocomedone: 0.08, blackhead: 0.02, dpow: 0.03, trichostasis: 0.02, filament: 0, milium: 0 }[type] || 0;
+    whitehead: 0.05, macrocomedone: 0.08, blackhead: 0.02, dpow: 0.03, trichostasis: 0.02, filament: 0, milium: 0,
+    abscess: 0.95, inflamedCyst: 0.9, blister: 0.04, bloodBlister: 0.12, tophus: 0.12, calcinosis: 0.06, solarComedone: 0.02, folliculitis: 0.5 }[type] || 0;
   this.inflam *= 0.8 + 0.4 * rng();
   // contents
   let V0 = (4 / 3) * Math.PI * Math.pow(this.rc, 3) * 0.85;
@@ -102,7 +103,7 @@ PP.Lesion.prototype.domeH = function () {
   const f = this.queue.length ? this.fill() : 1;
   const press = 1 + (this.T.bulge != null ? this.T.bulge : 0.5) * PP.clamp(this.P / 30, 0, 1) * f;
   let h = this.H0 * press * (0.25 + 0.75 * f) * (1 + 0.35 * this.deep);
-  if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis') h = this.H0;
+  if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis' || this.type === 'solarComedone') h = this.H0;
   if (this.steroidT >= 0) h *= PP.clamp(1 - this.steroidT / (2.5 * 86400), 0.15, 1);
   return h + this.hematoma * 0.6;
 };
@@ -134,7 +135,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
   }
   const f = this.queue.length ? this.fill() : 1;
   // intrinsic tension (tense pustules/boils) + transmitted load; Kelvin–Voigt-like lag
-  const intrinsic = (this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0.5) * f;
+  const intrinsic = (PP.TENSE[this.type] != null ? PP.TENSE[this.type] : 0.5) * f;
   let target = intrinsic + load.total * (0.25 + 0.75 * Math.pow(f, 0.6));
   if (T.mobile && this.open.r <= 0) target *= 0.15;
   // pore vacuum: reduced pressure over an open pore adds to the outward pressure difference
@@ -209,14 +210,19 @@ PP.Lesion.prototype.surfaceRupture = function (ctx, Rc) {
 // (thin contents gush along the cut; thick ones bulge into it)
 PP.Lesion.prototype.incisionRelease = function (ctx, kind) {
   const c = this.cur(); if (!c || c.vol <= 0 || this.T.mobile) return;
-  const intrinsic = this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0;
-  const Pst = Math.max(this.P, intrinsic * this.fill());
+  const Pst = Math.max(this.P, (PP.TENSE[this.type] || 0) * this.fill());
   if (Pst < 1.5 || (c.k !== 'liquid' && c.k !== 'paste')) return;
   const thin = c.k === 'liquid' && (c.mu || 1) < 400;
   const frac = PP.clamp(0.04 + Pst / 40, 0.04, thin ? 0.4 : 0.12);
   const vol = Math.min(c.vol, this.V0 * frac * ctx.S.spurt);
   if (vol <= 0) return;
-  this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
+  if (thin && Pst < 8) {
+    // modest stored pressure: the contents gush and well out of the cut as one pool (they only squirt under a hard squeeze)
+    const P = ctx.parts, cx = this.x + this.ox, cy = this.y + this.oy;
+    this.bead = P.well(this.bead != null ? this.bead : -1, cx, cy, ctx.skinH ? ctx.skinH(cx, cy) : 0, vol, c.m === 1 ? PP.MAT.pusThin : c.m, this.contentCol(c), this.open.r + 0.5);
+    c.vol = Math.max(0, c.vol - vol); this.V = Math.max(0, this.V - vol); this.ext += vol;
+    ctx.fx.extrude(this, vol * 20);
+  } else this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
   this.events.push('gush');
   ctx.fx.toast('', thin ? 'Gush' : 'Contents bulge', thin ? 'The incision released the stored pressure at once: contents gushed out along the cut.' : 'Thick contents bulged straight into the fresh incision.');
 };
@@ -338,12 +344,18 @@ PP.Lesion.prototype.emitFlow = function (ctx, Q, dt, ropen, viaPunctum) {
       const i = P.spawn(cx, cy, top, rs * (0.94 + 0.12 * ctx.rng()), c.m === 1 ? PP.MAT.pus : c.m, col);
       if (i < 0) break;
       if (c.m === PP.MAT.keratin) { const k = 0.9 + 0.15 * ctx.rng(); P.cr[i] *= k; P.cg[i] *= k; P.cb[i] *= k * 0.97; }
+      if (c.m === 1 && (this.bleedOpen > 0 || this.hematoma > 0 || this.inflam > 0.8 || this.queue.some((q) => q.m === PP.MAT.bloodyPus))) {
+        // blood-streaked pus: streaks along the worm, not a uniform pink
+        this.strandN = (this.strandN || 0) + 1;
+        const st = Math.max(0, Math.sin(this.strandN * 0.9 + this.seed * 20) - 0.55) * 1.4;
+        P.cr[i] = PP.lerp(P.cr[i], 0.42, 0.55 * st); P.cg[i] = PP.lerp(P.cg[i], 0.05, 0.55 * st); P.cb[i] = PP.lerp(P.cb[i], 0.04, 0.55 * st);
+      }
       P.pin[i] = 1;
       if (root != null && root >= 0 && P.alive[root] && P.pin[root]) {
         P.pin[root] = 0;
         P.z[root] = top + sp; P.pz[root] = P.z[root] - v / 120;
-        const brk = c.m === PP.MAT.keratin ? 1.08 + 0.1 * ctx.rng() : 1.45;
-        P.link(root, i, sp, c.m === PP.MAT.keratin ? 0.25 : 0.12, brk);
+        const brk = c.m === PP.MAT.chalk ? 1.04 + 0.05 * ctx.rng() : c.m === PP.MAT.keratin ? 1.08 + 0.1 * ctx.rng() : 1.45;
+        P.link(root, i, sp, c.m === PP.MAT.keratin || c.m === PP.MAT.chalk ? 0.3 : 0.12, brk);
       } else if (root != null && root >= 0 && P.alive[root]) {
         P.link(root, i, sp, 0.12, 1.45);
       }
@@ -351,24 +363,20 @@ PP.Lesion.prototype.emitFlow = function (ctx, Q, dt, ropen, viaPunctum) {
     }
     this.strandRoot = root;
   } else {
-    // Newtonian: high exit velocity -> jet; otherwise welling droplets
+    // Newtonian: it only jets above the dripping-to-jetting transition (Weber rho v^2 d / sigma ~ 6; Clanet &
+    // Lasheras); below that it wells up as a bead at the opening that grows until it lets go and runs
     const v = Q / (Math.PI * ropen * ropen);
-    if (v > 600) {
+    const vJet = Math.sqrt(0.33 / Math.max(2 * ropen, 0.05)) * 1000;   // mm/s for sigma ~0.055 N/m
+    if (v > vJet) {
       const cone = 0.35;
       this.spray(ctx, dV, Math.min(v, PP.jetSpeed(this.P)), cone, c);
       return;
     }
-    this.dropAcc = (this.dropAcc || 0) + dV;
-    const rd = PP.clamp(ropen * 1.4, 0.1, 0.4);
-    const vd = (4 / 3) * Math.PI * rd * rd * rd;
-    while (this.dropAcc >= vd) {
-      this.dropAcc -= vd;
-      const a = ctx.rng() * Math.PI * 2, rr = ropen * 0.5 * ctx.rng();
-      const mat = c.m === 1 ? PP.MAT.pusThin : c.m;
-      const i = P.spawn(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, top + rd, rd, mat, col);
-      if (i >= 0) P.setVel(i, Math.cos(a) * 3, Math.sin(a) * 3, Math.min(v, 120), 1 / 120);
-      if (c.hairs && ctx.rng() < 0.03) this.spawnHair(ctx, cx, cy, top, 3 + ctx.rng() * 3, true);
-    }
+    const mat = c.m === 1 ? PP.MAT.pusThin : c.m;
+    const zs = ctx.skinH ? ctx.skinH(cx, cy) : 0;
+    this.bead = P.well(this.bead != null ? this.bead : -1, cx, cy, Math.max(zs, top * 0.6), dV, mat, col, ropen + 0.2);
+    if (this.type === 'bloodBlister' && this.bead >= 0) P.age[this.bead] = Math.max(P.age[this.bead], 260);
+    if (c.hairs && ctx.rng() < Math.min(1, dV * 0.6)) this.spawnHair(ctx, cx, cy, top, 3 + ctx.rng() * 3, true);
   }
   c.vol -= dV; this.V = Math.max(0, this.V - dV); this.ext += dV;
   ctx.fx.extrude(this, dV / dt);

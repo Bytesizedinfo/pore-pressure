@@ -32,7 +32,7 @@ PP.Wounds.prototype.openLesions = function (x, y, rOpen, depth, kind, len, cx, c
     const lx = L.x + L.ox, ly = L.y + L.oy;
     const d = Math.hypot(x - lx, y - ly);
     const T = L.T;
-    if (d > Math.max(L.R * 0.75, 0.6)) continue;
+    if (d > Math.max(L.R * (T.group === 'Blister' ? 0.98 : 0.75), 0.6)) continue;
     const reach = T.open === 'open' ? 0 : Math.max(L.roofT * 0.8, 0.03);
     if (depth < reach) {
       if (kind === 'needle' && T.roofT > 0.2 && !L._needleWarn) { L._needleWarn = 1; this.W.fx.toast('warn', 'Too deep for a needle prick', 'This roof is ' + L.roofT.toFixed(1) + ' mm thick. Use the #11 blade (or let it point first).'); }
@@ -107,6 +107,7 @@ PP.Wounds.prototype.updCut = function (c) {
     const d = this.segDist(c, L.x + L.ox, L.y + L.oy);
     if (d >= Math.max(L.R * 0.6, 0.6)) continue;
     if (!c.L || L.R > c.L.R) { c.L = L; c.layer = PP.CUTLAYER[L.type] || 0; c.layerZ = Math.max(L.roofT, 0.05); }
+    if (L.T.group === 'Blister' && c.blade === 'blade15') L.flapAng = Math.atan2(c.dy, c.dx);
     c.inflam = Math.max(c.inflam || 0, L.inflam + (L.deep || 0) * 0.4);
     if (L.T.open === 'open' && (c.blade === 'blade11' || c.blade === 'blade15') && !L._openCut) { L._openCut = 1; this.W.fx.toast('warn', 'Already open', 'A blackhead has its own pore: cutting only adds a wound. Use the comedone loop.'); }
     this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
@@ -205,54 +206,51 @@ PP.Wounds.prototype.stepBleed = function (dt) {
   const lim = this.depthLimits();
   // clotting progresses once per wound per frame; gauze pressure roughly triples the rate
   const clot = (el, x, y) => { const press = this.pressureAt(x, y); el.clot = Math.min(1, el.clot + (dt / 240) * (press > 0.5 ? 3 : 1)); return press; };
-  // emitted volume (µL) -> number of droplets of radius rd
-  const emit = (el, rate, rd, x, y, press) => {
+  // emitted volume (uL) this step; blood wells up in beads at the wound and grows until it runs
+  const emitV = (el, rate, x, y, press) => {
     if (!S.blood) return 0;
     const e = this.epi(x, y);
-    const q = rate * (1 - 0.85 * e) * (1 - el.clot) * (1 - 0.92 * press) * S.bloodAmt;
-    el.acc += q * dt;
-    const vd = (4 / 3) * Math.PI * rd * rd * rd;
-    let n = 0;
-    while (el.acc > vd && n < 6) { el.acc -= vd; n++; this.bleedVol += vd; }
-    return n;
+    const v = rate * (1 - 0.85 * e) * (1 - el.clot) * (1 - 0.92 * press) * S.bloodAmt * dt;
+    if (v > 0) { this.bleedVol += v; this.lastBleed = W.clock; }
+    return v;
   };
+  const zAt = (x, y) => W.visH(x, y);
   for (const c of this.cuts) {
     const mx = (c.ax + c.bx) / 2, my = (c.ay + c.by) / 2;
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const n = emit(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
-    for (let k = 0; k < n; k++) {
-      const t = W.rng(), side = W.rng() < 0.5 ? -1 : 1;
-      const x = PP.lerp(c.ax, c.bx, t) - c.dy * side * c.gape * 0.5, y = PP.lerp(c.ay, c.by, t) + c.dx * side * c.gape * 0.5;
+    const v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, mx, my, press);   // uL/s per mm at dermal depth (cal)
+    if (v <= 0) continue;
+    // beads along the slit, about one per 1.3 mm, each fed from its stretch of the cut
+    const nb = Math.max(1, Math.round(c.len / 1.3));
+    c.beads = c.beads || [];
+    for (let k = 0; k < nb; k++) {
+      const t = (k + 0.5) / nb, x = PP.lerp(c.ax, c.bx, t), y = PP.lerp(c.ay, c.by, t);
       // emptied cyst with an incision and no pressure: blood pools inside (hematoma, AAFP)
       const L = W.lesions.find((l) => l.drained && l.V0 > 200 && Math.hypot(l.x - x, l.y - y) < l.R && press < 0.3);
-      if (L && W.rng() < 0.6) { L.hematoma = Math.min(L.R * 0.25, L.hematoma + 0.012); continue; }
-      const i = P.spawn(x, y, 0.05, 0.13, PP.MAT.blood);
-      if (i >= 0) P.setVel(i, 0, 0, 2, 1 / 120);
+      if (L) { L.hematoma = Math.min(L.R * 0.25, L.hematoma + v * 0.6 / nb * 0.02); continue; }
+      c.beads[k] = P.well(c.beads[k] != null ? c.beads[k] : -1, x, y, zAt(x, y), v / nb, PP.MAT.blood, null, 0.35);
     }
   }
   for (const h of this.holes) {
     const press = clot(h, h.x, h.y);
-    const n = emit(h, 0.5 * PP.clamp(h.depth / lim.dermis, 0, 1.3), 0.14, h.x, h.y, press);
-    for (let k = 0; k < n; k++) {
-      const a = W.rng() * Math.PI * 2;
-      const i = P.spawn(h.x + Math.cos(a) * h.along * 0.9, h.y + Math.sin(a) * h.across * 0.9, 0.05, 0.14, PP.MAT.blood);
-      if (i >= 0) P.setVel(i, 0, 0, 2, 1 / 120);
-    }
+    const v = emitV(h, 0.5 * PP.clamp(h.depth / lim.dermis, 0, 1.3), h.x, h.y, press);
+    if (v > 0) h.bead = P.well(h.bead != null ? h.bead : -1, h.x, h.y, zAt(h.x, h.y), v, PP.MAT.blood, null, Math.max(h.along, h.across));
   }
   for (const p of this.punct) {
     const press = clot(p, p.x, p.y);
-    const n = emit(p, 0.025 * PP.clamp(p.depth / 0.3, 0.2, 2), 0.11, p.x, p.y, press);
-    for (let k = 0; k < n; k++) { const i = P.spawn(p.x, p.y, 0.05, 0.11, PP.MAT.blood); if (i >= 0) P.setVel(i, 0, 0, 1, 1 / 120); }
+    const v = emitV(p, 0.025 * PP.clamp(p.depth / 0.3, 0.2, 2), p.x, p.y, press);
+    if (v > 0) p.bead = P.well(p.bead != null ? p.bead : -1, p.x, p.y, zAt(p.x, p.y), v, PP.MAT.blood, null, 0.2);
   }
   for (const L of W.lesions) {
     if (L.bleedOpen <= 0 || L.open.r <= 0) continue;
     const el = L._bleedEl || (L._bleedEl = { clot: 0, acc: 0 });
     const press = clot(el, L.x, L.y);
     if (L.Pext > 6) el.clot = Math.max(0, el.clot - dt * 0.5);   // squeezing re-opens capillaries
-    const n = emit(el, 0.35 * L.bleedOpen * (0.5 + L.inflam), 0.12, L.x, L.y, press);
-    for (let k = 0; k < n; k++) { const i = P.spawn(L.x + L.ox, L.y + L.oy, L.domeH() + 0.1, 0.12, PP.MAT.blood); if (i >= 0) P.setVel(i, 0, 0, 6, 1 / 120); }
+    const v = emitV(el, 0.35 * L.bleedOpen * (0.5 + L.inflam), L.x, L.y, press);
+    // blood joins whatever is welling at the opening (pink, streaky serosanguinous fluid)
+    if (v > 0) { const x = L.x + L.ox, y = L.y + L.oy; L.bead = P.well(L.bead != null ? L.bead : -1, x, y, Math.max(zAt(x, y), L.domeH() * 0.6), v, PP.MAT.blood, null, L.open.r + 0.25); }
     L.bleedOpen = Math.max(0, L.bleedOpen - dt * 0.05);
   }
 };

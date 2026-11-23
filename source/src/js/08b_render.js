@@ -18,6 +18,8 @@ PP.Renderer = function (canvas, W) {
     sss: G.program('sss', SH.fsVS, SH.sssFS),
     comp: G.program('comp', SH.fsVS, SH.compFS),
     post: G.program('post', SH.fsVS, SH.postFS),
+    splat: G.program('splat', SH.splatVS, SH.splatFS),
+    fblur: G.program('fblur', SH.fsVS, SH.fblurFS),
   };
   this.scale = PP.TEST ? 0.75 : PP.Renderer.scaleFor(PP.storage.get('quality', 'high'));
   this.rt = {};
@@ -76,6 +78,8 @@ PP.Renderer.prototype.resize = function (ds) {
   this.rt.obj = G.target(w, h, [F16N, { ifmt: gl.RGBA8, fmt: gl.RGBA, type: gl.UNSIGNED_BYTE, filter: gl.NEAREST }], true);
   this.rt.objS = G.target(w, h, [F16]);
   this.rt.skin = G.target(w, h, [F16, F16, F16]);
+  this.rt.fluid = G.target(hw, hh, [F16]);
+  this.rt.fluid2 = G.target(hw, hh, [F16]);
   this.rt.sssA = G.target(hw, hh, [F16]);
   this.rt.sssB = G.target(hw, hh, [F16]);
   this.rt.comp = G.target(w, h, [F16]);
@@ -186,12 +190,14 @@ PP.Renderer.prototype.uploadLesions = function () {
     const plugExt = L.plug ? (L.plug.out ? 1 : L.plug.ext / L.plug.L) : (L.coreOut || (L.T.vis === 20 && L.done) ? 1 : 0);
     const pn0 = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
     const headR = (T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45)
-      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
+      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 || T.vis === 27 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
     let openVis = L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
     // squeezing pressure, normalised (~30 kPa = 1): heads swell, pores dilate, puncta gape
     const pn = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
     if (T.open === 'open') openVis = L.open.r * (1 + 0.3 * pn);
-    const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' ? L.pusCol : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
+    const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'folliculitis' || L.type === 'abscess' ? L.pusCol
+      : L.type === 'blister' ? PP.hex2lin('#f0e2b0') : L.type === 'bloodBlister' ? PP.hex2lin('#5a0d14') : L.type === 'inflamedCyst' ? PP.hex2lin('#d9c9a0')
+      : L.type === 'tophus' ? PP.hex2lin('#f1ead2') : L.type === 'calcinosis' ? PP.hex2lin('#f4f2ea') : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
     const vis = T.vis;
     const vals = [
       cx, cy, L.R, H,
@@ -199,7 +205,7 @@ PP.Renderer.prototype.uploadLesions = function () {
       cc[0], cc[1], cc[2], L.type === 'furuncle' || L.type === 'carbuncle' ? 1 : f,
       L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, (L.punctum || 0) * (1 + 0.8 * pn),
       L.seed, L.pointing, L.hematoma, plugExt,
-      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
+      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, L.flapAng != null ? L.flapAng + 4 : 0,
     ];
     d.set(vals, o);
   });
@@ -404,6 +410,22 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   G.bindTex(0, this.rt.obj.texs[0], P.smooth.u.uObj); gl.uniform1f(P.smooth.u.uPxMm, w / W.cam.vw);
   G.drawFS();
 
+  // 5b. liquids on the skin: bead footprints summed into one thickness + composition field, then blurred
+  const ns = this.buildSplats();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid.fb); gl.viewport(0, 0, dw, dh);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (ns) {
+    gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(P.splat.p); this.camUniforms(P.splat, dw, dh);
+    G.drawInstances(this.splatData, ns);
+    gl.disable(gl.BLEND);
+    // surface tension flattens a puddle: smooth the summed caps over ~0.25 mm (curvature-flow-like) so pools read as one surface
+    const FB = P.fblur, step = (0.12 / W.cam.vw) > 1 / dw ? 0.12 / W.cam.vw : 1 / dw, stepY = step * (W.cam.vw / W.cam.vh) * (dw / dh) * (dh / dw);
+    gl.useProgram(FB.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid2.fb); G.bindTex(0, this.rt.fluid.texs[0], FB.u.uT); gl.uniform2f(FB.u.uDir, step, 0); G.drawFS();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.fluid.fb); G.bindTex(0, this.rt.fluid2.texs[0], FB.u.uT); gl.uniform2f(FB.u.uDir, 0, Math.max(stepY, 1 / dh)); G.drawFS();
+  }
+
   // 6. skin + object shading
   const set = W.curSet, det = W.detSet;
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.rt.skin.fb); gl.viewport(0, 0, w, h);
@@ -414,6 +436,8 @@ PP.Renderer.prototype.render = function (dt, fullRes) {
   G.bindTex(7, this.physA.texs[0], S.u.uPhys); G.bindTex(8, this.film.texs[0], S.u.uFilm); G.bindTex(9, this.dummy, S.u.uMarks);
   G.bindTex(10, this.envAtlas, S.u.uEnvP); G.bindTex(11, this.heatTex, S.u.uHeat); G.bindTex(12, this.lesTex, S.u.uLes);
   G.bindTex(14, set.detail, S.u.uDetail);
+  G.bindTex(15, this.rt.fluid.texs[0], S.u.uFluid); gl.uniform1i(S.u.uHasFluid, ns ? 1 : 0);
+  gl.uniform1f(S.u.uBloodAge, W.wounds.lastBleed != null ? Math.max(0, W.clock - W.wounds.lastBleed) / 3600 : 0);
   gl.activeTexture(gl.TEXTURE13); gl.bindTexture(gl.TEXTURE_2D, this.gridTex.t); gl.uniform1i(S.u.uLGrid, 13);
   gl.uniform1i(S.u.uGridN, this.gridN); gl.uniform1i(S.u.uLSlots, 4); gl.uniform1i(S.u.uHasObj, n ? 1 : 0);
   gl.uniform1f(S.u.uTile, set.meta.tile_mm); gl.uniform1f(S.u.uHmm, set.meta.height_mm * W.reliefK);
@@ -488,11 +512,26 @@ PP.Renderer.prototype.warm = function () {
   T.primRaw([0, 0, 0.5, 0.08, 4, 0, 2, 0, 3, PP.MATOBJ.chrome, 3, 1, 2.2, 0, 0, 0]);
   const a = P.spawn(1, 1, 0.3, 0.3, PP.MAT.blood), b = P.spawn(1.5, 1, 0.3, 0.3, PP.MAT.pus), c = P.spawn(1.8, 1, 0.3, 0.3, PP.MAT.pus);
   if (b >= 0 && c >= 0) P.link(b, c, 0.3, 0.1, 2);
+  if (a >= 0) P.onSkin[a] = 1;
   this.brush(0, 0, 1, [0, 0, 0.001, 0], 'add');
   this.drops.push({ u: 0.5, v: 0.5, r: 0.001, a: 0.01, m: 0, vy: 0 });
   this.render(1 / 60, true);
   W.phys.contacts.length = 0; T.nPrim = 0; P.clear(); this.drops.length = 0;
   this.render(1 / 60, true);
+};
+
+// beads on the skin -> spherical-cap footprints (centre, base radius, cap height | blood, pus, clot fractions)
+PP.Renderer.prototype.buildSplats = function () {
+  const P = this.W.parts, d = this.splatData || (this.splatData = new Float32Array(16 * 7000));
+  let n = 0;
+  for (let i = 0; i < P.hi && n < 7000; i++) {
+    if (!P.alive[i] || !P.onSkin[i] || !P.isLiquid(P.mat[i]) || P.next[i] >= 0 || P.prev[i] >= 0) continue;
+    const r = P.r[i], o = n * 16;
+    d[o] = P.x[i]; d[o + 1] = P.y[i]; d[o + 2] = 1.485 * r; d[o + 3] = 1.04 * r;   // base radius, cap height (70 deg)
+    d[o + 4] = P.fb[i]; d[o + 5] = P.fp[i]; d[o + 6] = P.clotOf(i); d[o + 7] = (i * 0.618034) % 1;
+    n++;
+  }
+  return n;
 };
 
 // particles + tool primitives -> instance buffer
@@ -509,6 +548,7 @@ PP.Renderer.prototype.buildInstances = function () {
   for (let i = 0; i < P.hi && n < maxN - 200; i++) {
     if (!P.alive[i]) continue;
     const j = P.next[i], m = P.mat[i];
+    if (P.onSkin[i] && j < 0 && P.prev[i] < 0 && P.isLiquid(m)) continue;
     // material resting on a squeezed fold rides up with it (visual lift, see World.buildHeightGrid)
     const li = W.liftAt(P.x[i], P.y[i]);
     if (j >= 0 && P.alive[j]) put(P.x[i], P.y[i], P.z[i] + li, P.r[i], P.x[j], P.y[j], P.z[j] + W.liftAt(P.x[j], P.y[j]), P.r[j], 1, m, P.cr[i], P.cg[i], P.cb[i]);
