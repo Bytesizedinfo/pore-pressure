@@ -13,6 +13,7 @@ PP.Tests.prototype.setup = async function (area, list, opt = {}) {
   W.parts.clear(); W.wounds.reset(); W.decals.reset(); W.render.setupWorld(); W.phys.clearGhosts(); W.phys.contacts.length = 0;
   W.lesions = []; W.clock = 0; W.ctx.clock = 0; W.stats = { pops: 0, vol: 0, perfect: 0, deep: 0, flinch: 0, bruise: 0 };
   W.tools.release(); W.tools.ptr.down = false; W.tools.spread = { fingers: 4.6, swabs: 3.0 }; W.tools.angle = 0; W.tools.wet = 0; W.painLevel = 0;
+  W.tools.gripOff = { x: 0, y: 0 }; W.tools.snap = true; W.tools.fitOff = { fingers: 0, swabs: 0 };
   const out = list.map(([t, x, y, d]) => W.addLesion(t, x, y, d));
   W.cam.x = opt.cx || 0; W.cam.y = opt.cy || 0; W.cam.zoom = opt.zoom || 1.5;
   W.render.resize(); W.cam.update(W.render.w, W.render.h);
@@ -485,6 +486,46 @@ PP.Tests.prototype.all = async function () {
     this.ok('wipe_cleans', before.beads >= 3 && after.beads === 0 && after.stain < before.stain * 0.6 && after.far && after.soaked && left === 0, { before, after, leftAfterClean: left });
   }
 
+  // 30. you control the grip: pressing on a blemish centres it, pressing beside it puts it there, Alt puts it
+  //     exactly where you press, it turns in 15 degree steps and the arrow keys move it mid-squeeze
+  {
+    await this.setup('cheek', [['pustule', 0, 0, 3]]); this.step(0.05);
+    const pads = () => W.phys.contacts.filter((c) => c.pad).map((c) => [+c.x.toFixed(2), +c.y.toFixed(2)]);
+    const press = (x, y, opt) => { T.ptr.x = x; T.ptr.y = y; T.ptr.lx = x; T.ptr.ly = y; T.down(x, y, Object.assign({ fit: true }, opt)); W.step(this.dt); return pads(); };
+    const lift = () => { T.up(); this.step(0.2); };
+    T.select('fingers'); T.rotate(6);
+    const onB = press(0.4, 0.3); T.moveGrip(1, 0); W.step(this.dt); const moved = pads(); lift();
+    T.resetGrip(); T.rotate(6);
+    const beside = press(4.5, 0); lift();
+    const exact = press(0.4, 0.3, { alt: true }); lift();
+    T.resetGrip(); T.rotate(3); const ang = +((T.angle * 180) / Math.PI).toFixed(1); T.rotate(-5); const wrap = +((T.angle * 180) / Math.PI).toFixed(1);
+    const near = (a, b, e = 0.06) => Math.abs(a - b) < e;
+    const s = onB.length === 2 ? Math.abs(onB[0][1]) : 0;
+    const okOn = onB.length === 2 && near(onB[0][0], 0) && near(onB[1][0], 0) && near(onB[0][1], -onB[1][1]) && s > 4 && s < 6;
+    const okMoved = moved.length === 2 && near(moved[0][0], 1) && near(moved[1][0], 1);
+    const okBeside = beside.length === 2 && near(beside[0][0], 4.5) && near(Math.abs(beside[0][1]), s);
+    const okExact = exact.length === 2 && near(exact[0][0], 0.4) && near(exact[0][1] + exact[1][1], 0.6);
+    this.ok('grip_control', okOn && okMoved && okBeside && okExact && ang === 45 && wrap === 150, { onB, moved, beside, exact, ang, wrap });
+  }
+  // 31. wiping a fresh cut: the slit is wicked empty and blood takes a while to come back, filling the slit
+  //     before it beads on the skin again (calibrated ooze, not an instant refill)
+  {
+    await this.setup('back', [], { zoom: 2 }); this.step(0.05);
+    W.wounds.addCut(-5, 0, 5, 0, 1.4, 'blade15', 931);
+    const c = W.wounds.cuts[0];
+    const vol = () => { let v = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.isLiquid(P.mat[i]) && Math.abs(P.y[i]) < 5 && Math.abs(P.x[i]) < 8) v += 4.19 * P.r[i] ** 3; return v; };
+    this.step(2); const sf2 = c.sf || 0;
+    this.step(18); const sf20 = c.sf || 0, v20 = vol();
+    T.select('wipe'); T.ptr.x = -8; T.ptr.y = 0; T.ptr.lx = -8; T.ptr.ly = 0; T.down(-8, 0, {});
+    for (let i = 1; i <= 60; i++) { T.move(-8 + 16 * i / 60, 0); W.step(this.dt); }
+    T.up(); this.step(0.02);
+    const sfW = c.sf || 0, vW = vol();
+    this.step(3); const sf3 = c.sf || 0, v3 = vol();
+    this.step(27); const v30 = vol();
+    const info = { gape: +c.gape.toFixed(2), slitV: +W.wounds.slitV(c).toFixed(2), sf2: +sf2.toFixed(2), sf20: +sf20.toFixed(2), v20: +v20.toFixed(2), sfW: +sfW.toFixed(2), vW: +vW.toFixed(2), sf3: +sf3.toFixed(2), v3: +v3.toFixed(2), v30: +v30.toFixed(2), clot: +c.clot.toFixed(2) };
+    this.ok('wipe_then_slow_ooze', sf2 > 0.05 && sf20 > 0.9 && v20 > 0.3 && sfW < 0.3 && vW < 0.05 && v3 < 0.3 && sf3 > sfW && v30 > v3 + 0.5, info);
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -581,7 +622,14 @@ PP.Tests.prototype.visual = async function (name) {
       for (let i = 1; i <= 60; i++) { T.move(-8 + 7.5 * i / 60, y0 - 2 * y0 * i / 60); this.W.step(this.dt); }
       if (k < passes - 1) { T.up(); this.step(0.02); }
     }
-    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05); }
+    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05 + +(PP.params.get('after') || 0)); }
+  } else if (name === 'grip') {
+    // the fingers' grip turned 45 degrees over a pustule (hover preview), or pressing with it
+    await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 2.2 });
+    const T = this.W.tools; T.select('fingers'); T.rotate(+(PP.params.get('rot') || 3));
+    const x = +(PP.params.get('x') || 0.4), y = +(PP.params.get('y') || 0.3);
+    if (PP.params.get('press')) this.hold('fingers', x, y, 0.8, { keep: true });
+    else { T.ptr.x = x; T.ptr.y = y; T.ptr.lx = x; T.ptr.ly = y; this.step(0.05); }
   } else if (name === 'newles') {
     await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
   } else if (name === 'clusters') {

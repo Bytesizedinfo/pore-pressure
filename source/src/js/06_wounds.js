@@ -193,6 +193,16 @@ PP.Wounds.prototype.stepHeat = function (dt) {
   }
 };
 
+// the incision's own volume (uL): a narrow V the length of the cut
+PP.Wounds.prototype.slitV = function (c) { return Math.max(0.3, 0.25 * c.len * PP.clamp(c.gape || 0, 0.15, 0.6) * Math.min(c.depth, 1.5)); };
+// gauze or a wipe over a cut wicks the blood out of the slit; a clot that has formed stays
+PP.Wounds.prototype.wick = function (x, y, r, amt) {
+  for (const c of this.cuts) {
+    if (this.segDist(c, x, y) >= r) continue;
+    const sf = c.sf || 0;
+    c.sf = Math.max(Math.min(sf, c.clot * 0.9), sf - amt);
+  }
+};
 PP.Wounds.prototype.pressureAt = function (x, y) {
   let p = 0;
   for (const g of this.press) { const d = Math.hypot(x - g.x, y - g.y); if (d < g.r) p = Math.max(p, g.k); }
@@ -220,8 +230,14 @@ PP.Wounds.prototype.stepBleed = function (dt) {
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, mx, my, press);   // uL/s per mm at dermal depth (cal)
+    // uL/s per mm at dermal depth. A standard ~1 mm deep bleeding-time incision loses ~5 uL/min (Zeigler 1990),
+    // i.e. ~0.02-0.03 uL/s per mm at first; inflamed tissue bleeds more
+    let v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.025 * c.len * deep, mx, my, press);
     if (v <= 0) continue;
+    // blood fills the slit first; only what overflows wells up on the skin as beads
+    const sv = this.slitV(c), inS = Math.min(v, Math.max(0, 1 - (c.sf || 0)) * sv);
+    c.sf = (c.sf || 0) + inS / sv; v -= inS;
+    if (v <= 1e-7) continue;
     // beads along the slit, about one per 1.3 mm, each fed from its stretch of the cut
     const nb = Math.max(1, Math.round(c.len / 1.3));
     c.beads = c.beads || [];

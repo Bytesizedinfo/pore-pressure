@@ -274,7 +274,7 @@ PP.Renderer.prototype.woundUniforms = function (prog) {
     // a cut over a pressurised lesion is pushed open wider by the contents behind it
     const Lc = c.L, gk = Lc && Lc.queue && Lc.queue.length && Lc.open.r > 0 ? 1 + 0.6 * PP.clamp(Lc.P / 20, 0, 1) * Lc.fill() : 1;
     B.c1[o] = c.depth; B.c1[o + 1] = c.gape * gk; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
-    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = 0;
+    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = c.sf || 0;
   }
   if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
   if (prog.u.uCut2) gl.uniform4fv(prog.u.uCut2, B.c2);

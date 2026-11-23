@@ -14,6 +14,11 @@ A macro skin extraction simulator that runs in the browser (WebGL2).
   - Zoom into any spot to hand over to a close-up right there: cheek, temple, ear, jaw, neck, chest, shoulder, scalp or upper back. Each gets blemishes typical of that site.
   - Every area and close-up keeps its state, so what you popped stays popped.
 - **Fitted to the lesion:** fingers and cotton buds land just outside the edge of the blemish you press on: tight for a blackhead, both thumbs well apart for a cyst. `[` / `]` or Shift+scroll nudge the spacing from there.
+- **Your grip:**
+  - Press on a blemish to centre the grip on it, or beside it to put the grip there. Hold Alt, or untick **Centre on blemish**, to place it exactly where you press.
+  - **Q / E**, Alt+scroll or the ⟲ ⟳ buttons turn it in 15° steps, and **R** turns it 90°.
+  - The arrow keys move it, even mid-squeeze; dragging while you squeeze slides it.
+  - Faint rings show where the pads will land.
 - **Lesions respond by type:**
   - Pressed, a pustule's head swells and whitens, a blackhead's plug rises from the pore, and a cyst bulges tight and its punctum gapes.
   - Deep cysts get far less of your pressure than superficial pustules, so they take more force, and big ones take longer to empty.
@@ -31,7 +36,8 @@ A macro skin extraction simulator that runs in the browser (WebGL2).
 - **Cleaning up:**
   - The **Saline wipe** (S, second in the tray) lifts blood, pus and serum where you drag it. It picks up loose material, and dried blood takes a few passes. Hold it still to blot.
   - The wipe turns pink or cream with what it soaks up, and you get a fresh one each time you pick it up.
-  - Wiping a fresh cut disturbs its clot, so it oozes again.
+  - Wiping a cut wicks the blood out of the slit. It refills over a few seconds, and only then do new beads form on the skin. Holding the wipe still on a cut is light pressure, which slows the ooze and speeds clotting.
+  - Cuts ooze at about the rate of a standard bleeding-time incision (~5 µL/min, Zeigler 1990), more if inflamed, and stop within a few minutes.
   - **Clean skin** wipes the whole patch at once, but leaves an iodine prep in place.
   - Pus, keratin and chalk are sticky and stay where they land.
   - Only real pressure makes a jet (dripping-to-jetting at Weber number ~6).

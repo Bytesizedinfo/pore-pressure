@@ -96,14 +96,21 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #info ol { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
 #info li.done { color: var(--ok); text-decoration: line-through; text-decoration-color: rgba(103,192,142,0.5); }
 #info a { color: var(--accent); }
-#meters { padding: 10px 12px; display: grid; gap: 6px; width: 190px; }
+#meters { padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; width: 226px; }
 .meter { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
 #painbar i { background: linear-gradient(90deg, var(--warn), var(--danger)); }
 #readout { font: 500 11px/1.2 var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
-#zoom { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-#zoom button { padding: 2px 9px; min-width: 30px; }
+#zoom { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+#grip { display: grid; gap: 5px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.07); }
+#grip[hidden] { display: none; }
+.grow { display: flex; align-items: center; gap: 4px; }
+.grow .lbl { width: 46px; flex: none; }
+.grow button { padding: 2px 6px; min-width: 26px; }
+.gval { font: 500 12px/1 var(--font-mono); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#grip label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); flex: 1; cursor: pointer; }
+#zoom button { padding: 2px 7px; min-width: 26px; }
 #zoomv { font: 500 12px/1 var(--font-mono); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #addsize { width: 72px; accent-color: var(--accent); }
 #addsel { max-width: 170px; }
@@ -195,6 +202,11 @@ body.bodyview #tray:hover { opacity: 1; }
       <div class="meter" title="How close the blemish is to giving way. Violet: the roof will pop outward (good). Amber: the wall would burst inward under the skin (stop and open it instead).">Pop<div class="bar" id="popbar"><i></i></div></div>
       <div id="readout">—</div>
       <div id="perf" hidden></div>
+      <div id="grip" hidden>
+        <div class="grow"><span class="lbl">Grip</span><button id="grl" title="Turn the grip anticlockwise (Q, or Alt+scroll)" aria-label="Turn grip anticlockwise">⟲</button><span class="gval" id="gripa">0°</span><button id="grr" title="Turn the grip clockwise (E, or Alt+scroll)" aria-label="Turn grip clockwise">⟳</button><button id="gr90" title="Turn the grip 90° (R)">90°</button></div>
+        <div class="grow"><span class="lbl">Spread</span><button id="gsm" title="Pads closer together ([ or Shift+scroll)" aria-label="Pads closer">−</button><span class="gval" id="gripv">—</span><button id="gsp" title="Pads further apart (] or Shift+scroll)" aria-label="Pads further apart">+</button></div>
+        <div class="grow"><label title="Pressing on a blemish centres the grip on it. Off: the grip goes exactly where you press (hold Alt for the same, once)."><input type="checkbox" id="gsnap" checked> Centre on blemish</label><button id="greset" title="Upright, centred, fitted grip again">Reset</button></div>
+      </div>
       <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Show the whole patch (in the face view: frame the face)">Fit</button><button id="zbody" title="Zoom out to the whole face and upper body">Face</button></div>
     </section>
   </div>
@@ -705,8 +717,8 @@ PP.LTYPES = {
 PP.TOOLS = [
   { id: 'move', name: 'Move', group: 'Hands', key: 'M', opt: 'Drag to move around the skin. Hold Space to do the same with any instrument; right-drag works too.' },
   { id: 'wipe', name: 'Saline wipe', group: 'Hands', key: 'S', opt: 'Drag to wipe away blood, pus and stains (heavy or dried stains take two or three passes); hold still to blot. Each time you pick it up you get a fresh one.' },
-  { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Scroll to set spread; Q/E rotate. On touch, pinch with two fingers.' },
-  { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid.' },
+  { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Press on a blemish to centre the grip on it, or beside it to put the grip there (Alt: exactly where you press). Q/E, Alt+scroll or R (90°) rotate; arrow keys move it, even mid-squeeze; [ ] or Shift+scroll set the spread. On touch, pinch with two fingers.' },
+  { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid. Rotate and move the grip like the fingers: Q/E, Alt+scroll, R, arrow keys.' },
   { id: 'loop', name: 'Comedone loop', group: 'Extraction', key: '3', opt: 'Centre the ring over the pore and hold. Scroll changes loop size (1.5 / 2.5 mm).' },
   { id: 'vacuum', name: 'Pore vacuum', group: 'Extraction', key: '4', opt: 'Hold to apply suction (scroll: 40–65 kPa). Makers advise ≤3 s per spot.' },
   { id: 'needle', name: 'Sterile needle', group: 'Sharps', key: '5', opt: 'Tap to de-roof a head. Drag upward over an ingrown hair to lift the loop.' },
@@ -2039,6 +2051,16 @@ PP.Wounds.prototype.stepHeat = function (dt) {
   }
 };
 
+// the incision's own volume (uL): a narrow V the length of the cut
+PP.Wounds.prototype.slitV = function (c) { return Math.max(0.3, 0.25 * c.len * PP.clamp(c.gape || 0, 0.15, 0.6) * Math.min(c.depth, 1.5)); };
+// gauze or a wipe over a cut wicks the blood out of the slit; a clot that has formed stays
+PP.Wounds.prototype.wick = function (x, y, r, amt) {
+  for (const c of this.cuts) {
+    if (this.segDist(c, x, y) >= r) continue;
+    const sf = c.sf || 0;
+    c.sf = Math.max(Math.min(sf, c.clot * 0.9), sf - amt);
+  }
+};
 PP.Wounds.prototype.pressureAt = function (x, y) {
   let p = 0;
   for (const g of this.press) { const d = Math.hypot(x - g.x, y - g.y); if (d < g.r) p = Math.max(p, g.k); }
@@ -2066,8 +2088,14 @@ PP.Wounds.prototype.stepBleed = function (dt) {
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, mx, my, press);   // uL/s per mm at dermal depth (cal)
+    // uL/s per mm at dermal depth. A standard ~1 mm deep bleeding-time incision loses ~5 uL/min (Zeigler 1990),
+    // i.e. ~0.02-0.03 uL/s per mm at first; inflamed tissue bleeds more
+    let v = emitV(c, (1 + 1.5 * (c.inflam || 0)) * 0.025 * c.len * deep, mx, my, press);
     if (v <= 0) continue;
+    // blood fills the slit first; only what overflows wells up on the skin as beads
+    const sv = this.slitV(c), inS = Math.min(v, Math.max(0, 1 - (c.sf || 0)) * sv);
+    c.sf = (c.sf || 0) + inS / sv; v -= inS;
+    if (v <= 1e-7) continue;
     // beads along the slit, about one per 1.3 mm, each fed from its stretch of the cut
     const nb = Math.max(1, Math.round(c.len / 1.3));
     c.beads = c.beads || [];
@@ -2118,6 +2146,7 @@ PP.Tools = function (W) {
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
   this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
+  this.gripOff = { x: 0, y: 0 }; this.snap = true; this.gripShowUntil = 0; this.altKey = false;   // where you put the grip
   this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.wipeStain = [0.62, 0.07, 0.08];   // the saline wipe soaks up the colour of what it picks up
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
@@ -2151,12 +2180,46 @@ PP.Tools.prototype.nudge = function (id, k) {
   if (this.spread[id] == null) return;
   this.fitOff[id] = PP.clamp(this.fitOff[id] + k, -10, 15);
   this.spread[id] = PP.clamp(this.spread[id] + k, 1.5, 25);
+  this.showGrip();
+};
+// where the grip goes: centred on the blemish when you press on it, otherwise where you press (still spaced
+// for the nearest blemish). Alt, or "Centre on blemish" off, places it exactly where you press. Your arrow-key
+// offset (gripOff) is added live, so it also moves the pads mid-squeeze.
+PP.Tools.prototype.gripPlace = function (x, y, noSnap) {
+  const id = this.id, isF = id === 'fingers';
+  const f = this.fitFor(x, y);
+  let cx = x, cy = y, s = this.spread[id], snapped = false;
+  if (f) {
+    s = f.s;
+    if (this.snap && !noSnap && Math.hypot(x - f.cx, y - f.cy) <= f.L.R + (isF ? 1.5 : 0.8)) { cx = f.cx; cy = f.cy; snapped = true; }
+  }
+  return { cx, cy, s, f, snapped };
+};
+PP.Tools.prototype.showGrip = function () { const W = this.W; this.gripShowUntil = W.time + 1.5; W.activeUntil = Math.max(W.activeUntil || 0, W.time + 1.6); };
+// rotate in 15 degree steps; the two pads are symmetric, so 0-165 degrees covers every orientation
+PP.Tools.prototype.rotate = function (steps) {
+  const k = Math.round(this.angle / (Math.PI / 12)) + steps;
+  this.angle = (((k % 12) + 12) % 12) * (Math.PI / 12);
+  this.showGrip();
+};
+PP.Tools.prototype.moveGrip = function (dx, dy) {
+  this.gripOff.x = PP.clamp(this.gripOff.x + dx, -12, 12); this.gripOff.y = PP.clamp(this.gripOff.y + dy, -12, 12);
+  this.showGrip();
+};
+PP.Tools.prototype.resetGrip = function () {
+  this.angle = 0; this.gripOff.x = 0; this.gripOff.y = 0; this.snap = true;
+  for (const id of ['fingers', 'swabs']) { this.spread[id] -= this.fitOff[id]; this.fitOff[id] = 0; }
+  this.showGrip();
 };
 PP.Tools.prototype.down = function (x, y, opt = {}) {
   const p = this.ptr;
   Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0, build: !!opt.fit });
   this.fitDX = 0; this.fitDY = 0;
-  if (opt.fit) { const f = this.fitFor(x, y); if (f) { this.spread[this.id] = f.s; this.fitDX = f.cx - x; this.fitDY = f.cy - y; } }
+  if (opt.fit && (this.id === 'fingers' || this.id === 'swabs')) {
+    const g = this.gripPlace(x, y, opt.alt);
+    if (g.f) this.spread[this.id] = g.s;
+    this.fitDX = g.cx - x; this.fitDY = g.cy - y;
+  }
   this.stroke++;
   const W = this.W;
   if (this.id === 'gauze' && opt.shift) { W.S.shield = !W.S.shield; W.fx.toast('', 'Splatter shield ' + (W.S.shield ? 'on' : 'off'), W.S.shield ? 'Gauze held loosely over the lesion catches spray (AAFP).' : ''); p.down = false; return; }
@@ -2338,20 +2401,21 @@ PP.Tools.prototype.update = function (dt) {
       F = PP.clamp((this.touch.d0 - d) * (isF ? 1.6 : 0.9) + 0.6, 0, isF ? 9 : 4);
     } else if (p.down) {
       const s = this.spread[id];
-      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX, my = p.y + this.fitDY;
+      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX + this.gripOff.x, my = p.y + this.fitDY + this.gripOff.y;
       c1 = { x: mx - ax * s, y: my - ay * s }; c2 = { x: mx + ax * s, y: my + ay * s };
       F = ramp(0.9, isF ? (p.shift ? 10 : 6) : 3);
       // a real press keeps building slowly while held, so big or deep lesions simply take longer
       if (p.build && !p.shift) F = Math.min(isF ? 10 : 4, F + Math.max(0, p.t - 1.2) * (isF ? 1.0 : 0.4));
     } else if (!this.touch) {
-      // hovering near a blemish: faint rings where the pads would land
-      const f = this.fitFor(p.x, p.y);
-      if (f) {
+      // hovering near a blemish (or just after you turned or moved the grip): faint rings where the pads would land
+      const g = this.gripPlace(p.x, p.y, this.altKey);
+      if (g.f || W.time < this.gripShowUntil) {
         const ax = Math.cos(this.angle), ay = Math.sin(this.angle), a = isF ? 3.9 : 2.0;
+        const gx = g.cx + this.gripOff.x, gy = g.cy + this.gripOff.y;
         for (const sg of [-1, 1]) {
-          const cx = f.cx + ax * f.s * sg, cy = f.cy + ay * f.s * sg, z = W.skinH(cx, cy) + 0.1;
-          for (let k = 0; k < 10; k++) {
-            const a0 = (k / 10) * Math.PI * 2, a1 = ((k + 1) / 10) * Math.PI * 2;
+          const cx = gx + ax * g.s * sg, cy = gy + ay * g.s * sg, z = W.skinH(cx, cy) + 0.1;
+          for (let k = 0; k < 24; k++) {
+            const a0 = (k / 24) * Math.PI * 2, a1 = ((k + 1) / 24) * Math.PI * 2;
             this.prim([cx + Math.cos(a0) * a, cy + Math.sin(a0) * a, z, 0.05, cx + Math.cos(a1) * a, cy + Math.sin(a1) * a, z, 0.05], 1, PP.MATOBJ.nitrile, [0.55, 0.5, 0.95, 0]);
           }
         }
@@ -2596,8 +2660,8 @@ PP.Tools.prototype.update = function (dt) {
   } else if (id === 'gauze') {
     const zr = W.skinH(p.x, p.y);
     if (p.down) {
-      if (p.speed > 4) W.decals.wipe(p.x, p.y, 6, this.W);
-      else if (p.t > 0.25) { W.wounds.press.push({ x: p.x, y: p.y, r: 6.5, k: 1 }); ph.contacts.push({ x: p.x, y: p.y, a: 6, fn: 1.2 }); }
+      if (p.speed > 4) { W.decals.wipe(p.x, p.y, 6, this.W); W.wounds.wick(p.x, p.y, 6, 0.3 * Math.hypot(p.x - p.lx, p.y - p.ly)); }
+      else if (p.t > 0.25) { W.wounds.press.push({ x: p.x, y: p.y, r: 6.5, k: 1 }); ph.contacts.push({ x: p.x, y: p.y, a: 6, fn: 1.2 }); W.wounds.wick(p.x, p.y, 6.5, dt * 0.8); }
       W.absorb(p.x, p.y, 6.5, zr + 3);
     }
     this.primRaw([p.x, p.y, zr + (p.down ? 0.6 : 3), 0, 9, 9, 0.6, 0.15, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.35]);
@@ -2612,19 +2676,25 @@ PP.Tools.prototype.update = function (dt) {
       let ws = this.ws;
       if (!ws) { ws = this.ws = { x: p.x, y: p.y, blot: 0 }; W.render.brush(p.x, p.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub'); }
       let d = Math.hypot(p.x - ws.x, p.y - ws.y);
-      const moved = d;
       while (d >= 0.6) {
         ws.x += ((p.x - ws.x) * 0.6) / d; ws.y += ((p.y - ws.y) * 0.6) / d; d -= 0.6;
         W.render.brush(ws.x, ws.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub');
       }
-      if (Math.hypot(p.x - p.lx, p.y - p.ly) < 0.02 && p.t > 0.2) {
+      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
+      if (L < 0.02 && p.t > 0.2) {
         ws.blot += dt;
         while (ws.blot >= 0.1) { ws.blot -= 0.1; W.render.brush(p.x, p.y, 3.8, [0.01, 0.03, 0.08, 0], 'sub'); }
+        // holding a moist gauze on a cut is light pressure: it slows the ooze and helps it clot
+        W.wounds.press.push({ x: p.x, y: p.y, r: 4.3, k: 0.6 });
+        W.wounds.wick(p.x, p.y, 4.3, dt * 0.8);
       }
       W.wipeAt(p.x, p.y, 4.3, zr + 4);
-      // wiping across a fresh cut disturbs its clot: it oozes again
-      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
-      if (L > 0) for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 3) c.clot = Math.max(0, c.clot - 0.003 * L);
+      // the gauze wicks the blood out of the slit (a clot that has formed stays); dragging right along the cut
+      // line catches the fresh clot a little
+      if (L > 0) {
+        W.wounds.wick(p.x, p.y, 4.3, 0.35 * L);
+        for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 1.5) c.clot = Math.max(0, c.clot - 0.001 * L);
+      }
     } else this.ws = null;
     const g = this.wipeCol;
     this.primRaw([p.x, p.y, zr + (p.down ? 0.53 : 3), 0, 4.6, 4.6, 0.5, 0.25, 2, PP.MATOBJ.gauze, 0, 0, g[0], g[1], g[2], 0.35]);
@@ -3263,7 +3333,8 @@ void main(){
               : vec3(0.84,0.45,0.42);
       wc = mix(wc, lc, lay);
     }
-    wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*clamp(0.55+0.4*(1.0-film.r*0.0),0.0,1.0)*smoothstep(0.1,0.6,wd));
+    // blood in the slit: it fills from the bottom of the V, so a part-filled cut shows red along its deepest line first
+    wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*0.95*smoothstep(0.1,0.6,wd)*smoothstep(0.0,0.35,wLay.w - 0.6*(1.0-clamp(wd/max(uDermis,0.3),0.0,1.0))));
     alb = mix(alb, wc, inW);
   }
   if(pun>0.0) alb = mix(alb, vec3(0.3,0.03,0.03)*uBloodOn + vec3(0.5,0.35,0.3)*(1.0-uBloodOn), pun*0.8);
@@ -3764,7 +3835,7 @@ PP.Renderer.prototype.woundUniforms = function (prog) {
     // a cut over a pressurised lesion is pushed open wider by the contents behind it
     const Lc = c.L, gk = Lc && Lc.queue && Lc.queue.length && Lc.open.r > 0 ? 1 + 0.6 * PP.clamp(Lc.P / 20, 0, 1) * Lc.fill() : 1;
     B.c1[o] = c.depth; B.c1[o + 1] = c.gape * gk; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
-    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = 0;
+    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = c.sf || 0;
   }
   if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
   if (prog.u.uCut2) gl.uniform4fv(prog.u.uCut2, B.c2);
@@ -5525,6 +5596,14 @@ PP.UI.prototype.build = function () {
   this.renderTones();
   $('newpatch').addEventListener('click', () => { W.newPatch(Math.floor(Math.random() * 1e9)); this.sel = null; });
   $('wait').addEventListener('click', () => { W.timelapse(+$('waitsel').value); });
+  // grip controls (fingers and cotton swabs)
+  $('grl').addEventListener('click', () => T.rotate(1));
+  $('grr').addEventListener('click', () => T.rotate(-1));
+  $('gr90').addEventListener('click', () => T.rotate(6));
+  $('gsm').addEventListener('click', () => T.nudge(T.id, -0.4));
+  $('gsp').addEventListener('click', () => T.nudge(T.id, 0.4));
+  $('gsnap').addEventListener('change', (e) => { T.snap = e.target.checked; });
+  $('greset').addEventListener('click', () => { T.resetGrip(); $('gsnap').checked = true; });
   $('cleanskin').addEventListener('click', () => { W.cleanSkin(); this.toast('', 'Skin cleaned', 'Blood, pus and stains wiped away. Use the Saline wipe (S) to clean just one spot.'); });
   $('wipelens').addEventListener('click', () => { W.render.drops.length = 0; W._lensToast = 0; this.toast('', 'Lens wiped', ''); });
   const mute = $('mute');
@@ -5691,6 +5770,15 @@ PP.UI.prototype.update = function (dt) {
   if (L && L.P > 0.5) ro += (ro ? ' · ' : '') + 'cavity ' + L.P.toFixed(0) + ' kPa';
   if (L) { const t = W.wounds.heatAt(L.x, L.y); L.maxT = Math.max(L.maxT || 0, t); if (t > 33.2) ro += (ro ? ' · ' : '') + t.toFixed(1) + ' °C'; }
   this.$('readout').textContent = ro || '—';
+  // grip readout: angle, and the pad-to-pad distance you would get pressing here
+  { const gr = this.$('grip'), on = T.id === 'fingers' || T.id === 'swabs';
+    if (gr.hidden === on) gr.hidden = !on;
+    if (on) {
+      const s = T.ptr.down ? T.spread[T.id] : T.gripPlace(T.ptr.x, T.ptr.y, T.altKey).s;
+      const a = Math.round((T.angle * 180) / Math.PI) + '°', v = (2 * s).toFixed(1) + ' mm';
+      if (this._ga !== a) { this._ga = a; this.$('gripa').textContent = a; }
+      if (this._gv !== v) { this._gv = v; this.$('gripv').textContent = v; }
+    } }
   if (W.S.perf) {
     const R = W.render, pf = PP.main.fps ? PP.main.fps.toFixed(0) + ' fps' : '';
     this.$('perf').hidden = false;
@@ -5747,8 +5835,8 @@ PP.UI.prototype.bindInput = function () {
     // smart drag: a press on clear skin (nothing for this instrument to work on) pans when it moves,
     // and becomes a normal press if held still; blades, needles and injections always act
     if (e.button === 0 && this.ptrs.size === 1 && this.canPanFrom(p.x, p.y, T.id)) {
-      const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
-      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure, fit: true }); } }, 220);
+      const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, alt: e.altKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
+      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, alt: q.alt, pressure: q.pressure, fit: true }); } }, 220);
       return;
     }
     if (this.ptrs.size === 2) {
@@ -5761,7 +5849,7 @@ PP.UI.prototype.bindInput = function () {
       else this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: W.cam.zoom, cx: W.cam.x, cy: W.cam.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       return;
     }
-    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
+    T.down(p.x, p.y, { shift: e.shiftKey, alt: e.altKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
   });
   cv.addEventListener('pointermove', (e) => {
     if (body()) { body().move(e); return; }
@@ -5809,6 +5897,7 @@ PP.UI.prototype.bindInput = function () {
       this.clampCam(); W.cam.tx = W.cam.x; W.cam.ty = W.cam.y; return;
     }
     const p = this.toWorld(e.clientX, e.clientY);
+    T.altKey = e.altKey;
     if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
     if (!T.ptr.down) {
       T.ptr.x = p.x; T.ptr.y = p.y; T.ptr.lx = p.x; T.ptr.ly = p.y;
@@ -5838,8 +5927,14 @@ PP.UI.prototype.bindInput = function () {
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (body()) { body().wheel(e); return; }
+    if (e.altKey && (T.id === 'fingers' || T.id === 'swabs')) {
+      // Alt+scroll turns the grip: one 15 degree step per wheel notch (trackpads accumulate)
+      this.rotAcc = (this.rotAcc || 0) + (e.deltaY || e.deltaX);
+      while (Math.abs(this.rotAcc) >= 60) { T.rotate(this.rotAcc > 0 ? -1 : 1); this.rotAcc -= Math.sign(this.rotAcc) * 100; if (Math.abs(this.rotAcc) < 60) this.rotAcc = 0; }
+      return;
+    }
     if (e.shiftKey) {
-      const k = e.deltaY > 0 ? -1 : 1;
+      const k = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
       if (T.id === 'fingers' || T.id === 'swabs') T.nudge(T.id, k * 0.3);
       else if (T.id === 'loop') T.loopR = T.loopR > 1 ? 0.75 : 1.25;
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
@@ -5876,7 +5971,14 @@ PP.UI.prototype.bindInput = function () {
     const k = e.key.toUpperCase();
     const t = PP.TOOLS.find((x) => x.key === k);
     if (t) { T.select(t.id); return; }
-    if (k === 'Q') T.angle += 0.2; else if (k === 'E') T.angle -= 0.2;
+    const grip = T.id === 'fingers' || T.id === 'swabs';
+    if (grip && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const s = e.shiftKey ? 2 : 0.5;
+      T.moveGrip(e.key === 'ArrowLeft' ? -s : e.key === 'ArrowRight' ? s : 0, e.key === 'ArrowUp' ? s : e.key === 'ArrowDown' ? -s : 0);
+      return;
+    }
+    if (k === 'Q') T.rotate(1); else if (k === 'E') T.rotate(-1); else if (k === 'R') T.rotate(6);
     else if (k === '[') T.nudge(T.id, -0.4);
     else if (k === ']') T.nudge(T.id, 0.4);
     else if (e.key === '+' || e.key === '=') this.zoomBy(1.35);
@@ -6055,6 +6157,7 @@ PP.Tests.prototype.setup = async function (area, list, opt = {}) {
   W.parts.clear(); W.wounds.reset(); W.decals.reset(); W.render.setupWorld(); W.phys.clearGhosts(); W.phys.contacts.length = 0;
   W.lesions = []; W.clock = 0; W.ctx.clock = 0; W.stats = { pops: 0, vol: 0, perfect: 0, deep: 0, flinch: 0, bruise: 0 };
   W.tools.release(); W.tools.ptr.down = false; W.tools.spread = { fingers: 4.6, swabs: 3.0 }; W.tools.angle = 0; W.tools.wet = 0; W.painLevel = 0;
+  W.tools.gripOff = { x: 0, y: 0 }; W.tools.snap = true; W.tools.fitOff = { fingers: 0, swabs: 0 };
   const out = list.map(([t, x, y, d]) => W.addLesion(t, x, y, d));
   W.cam.x = opt.cx || 0; W.cam.y = opt.cy || 0; W.cam.zoom = opt.zoom || 1.5;
   W.render.resize(); W.cam.update(W.render.w, W.render.h);
@@ -6527,6 +6630,46 @@ PP.Tests.prototype.all = async function () {
     this.ok('wipe_cleans', before.beads >= 3 && after.beads === 0 && after.stain < before.stain * 0.6 && after.far && after.soaked && left === 0, { before, after, leftAfterClean: left });
   }
 
+  // 30. you control the grip: pressing on a blemish centres it, pressing beside it puts it there, Alt puts it
+  //     exactly where you press, it turns in 15 degree steps and the arrow keys move it mid-squeeze
+  {
+    await this.setup('cheek', [['pustule', 0, 0, 3]]); this.step(0.05);
+    const pads = () => W.phys.contacts.filter((c) => c.pad).map((c) => [+c.x.toFixed(2), +c.y.toFixed(2)]);
+    const press = (x, y, opt) => { T.ptr.x = x; T.ptr.y = y; T.ptr.lx = x; T.ptr.ly = y; T.down(x, y, Object.assign({ fit: true }, opt)); W.step(this.dt); return pads(); };
+    const lift = () => { T.up(); this.step(0.2); };
+    T.select('fingers'); T.rotate(6);
+    const onB = press(0.4, 0.3); T.moveGrip(1, 0); W.step(this.dt); const moved = pads(); lift();
+    T.resetGrip(); T.rotate(6);
+    const beside = press(4.5, 0); lift();
+    const exact = press(0.4, 0.3, { alt: true }); lift();
+    T.resetGrip(); T.rotate(3); const ang = +((T.angle * 180) / Math.PI).toFixed(1); T.rotate(-5); const wrap = +((T.angle * 180) / Math.PI).toFixed(1);
+    const near = (a, b, e = 0.06) => Math.abs(a - b) < e;
+    const s = onB.length === 2 ? Math.abs(onB[0][1]) : 0;
+    const okOn = onB.length === 2 && near(onB[0][0], 0) && near(onB[1][0], 0) && near(onB[0][1], -onB[1][1]) && s > 4 && s < 6;
+    const okMoved = moved.length === 2 && near(moved[0][0], 1) && near(moved[1][0], 1);
+    const okBeside = beside.length === 2 && near(beside[0][0], 4.5) && near(Math.abs(beside[0][1]), s);
+    const okExact = exact.length === 2 && near(exact[0][0], 0.4) && near(exact[0][1] + exact[1][1], 0.6);
+    this.ok('grip_control', okOn && okMoved && okBeside && okExact && ang === 45 && wrap === 150, { onB, moved, beside, exact, ang, wrap });
+  }
+  // 31. wiping a fresh cut: the slit is wicked empty and blood takes a while to come back, filling the slit
+  //     before it beads on the skin again (calibrated ooze, not an instant refill)
+  {
+    await this.setup('back', [], { zoom: 2 }); this.step(0.05);
+    W.wounds.addCut(-5, 0, 5, 0, 1.4, 'blade15', 931);
+    const c = W.wounds.cuts[0];
+    const vol = () => { let v = 0; for (let i = 0; i < P.hi; i++) if (P.alive[i] && P.isLiquid(P.mat[i]) && Math.abs(P.y[i]) < 5 && Math.abs(P.x[i]) < 8) v += 4.19 * P.r[i] ** 3; return v; };
+    this.step(2); const sf2 = c.sf || 0;
+    this.step(18); const sf20 = c.sf || 0, v20 = vol();
+    T.select('wipe'); T.ptr.x = -8; T.ptr.y = 0; T.ptr.lx = -8; T.ptr.ly = 0; T.down(-8, 0, {});
+    for (let i = 1; i <= 60; i++) { T.move(-8 + 16 * i / 60, 0); W.step(this.dt); }
+    T.up(); this.step(0.02);
+    const sfW = c.sf || 0, vW = vol();
+    this.step(3); const sf3 = c.sf || 0, v3 = vol();
+    this.step(27); const v30 = vol();
+    const info = { gape: +c.gape.toFixed(2), slitV: +W.wounds.slitV(c).toFixed(2), sf2: +sf2.toFixed(2), sf20: +sf20.toFixed(2), v20: +v20.toFixed(2), sfW: +sfW.toFixed(2), vW: +vW.toFixed(2), sf3: +sf3.toFixed(2), v3: +v3.toFixed(2), v30: +v30.toFixed(2), clot: +c.clot.toFixed(2) };
+    this.ok('wipe_then_slow_ooze', sf2 > 0.05 && sf20 > 0.9 && v20 > 0.3 && sfW < 0.3 && vW < 0.05 && v3 < 0.3 && sf3 > sfW && v30 > v3 + 0.5, info);
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -6623,7 +6766,14 @@ PP.Tests.prototype.visual = async function (name) {
       for (let i = 1; i <= 60; i++) { T.move(-8 + 7.5 * i / 60, y0 - 2 * y0 * i / 60); this.W.step(this.dt); }
       if (k < passes - 1) { T.up(); this.step(0.02); }
     }
-    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05); }
+    if (PP.params.get('lift')) { T.up(); T.move(60, 60); this.step(0.05 + +(PP.params.get('after') || 0)); }
+  } else if (name === 'grip') {
+    // the fingers' grip turned 45 degrees over a pustule (hover preview), or pressing with it
+    await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 2.2 });
+    const T = this.W.tools; T.select('fingers'); T.rotate(+(PP.params.get('rot') || 3));
+    const x = +(PP.params.get('x') || 0.4), y = +(PP.params.get('y') || 0.3);
+    if (PP.params.get('press')) this.hold('fingers', x, y, 0.8, { keep: true });
+    else { T.ptr.x = x; T.ptr.y = y; T.ptr.lx = x; T.ptr.ly = y; this.step(0.05); }
   } else if (name === 'newles') {
     await this.setup('back', [['abscess', -38, 18, 26], ['inflamedCyst', 0, 22, 16], ['blister', 34, 22, 11], ['bloodBlister', 34, -6, 8], ['tophus', -8, -16, 6], ['calcinosis', 12, -18, 7]], { zoom: +(PP.params.get('zoom') || 0.55), cx: +(PP.params.get('cx') || 0), cy: +(PP.params.get('cy') || 0) });
   } else if (name === 'clusters') {

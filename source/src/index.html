@@ -89,14 +89,21 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #info ol { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
 #info li.done { color: var(--ok); text-decoration: line-through; text-decoration-color: rgba(103,192,142,0.5); }
 #info a { color: var(--accent); }
-#meters { padding: 10px 12px; display: grid; gap: 6px; width: 190px; }
+#meters { padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; width: 226px; }
 .meter { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; font: 500 10px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
 #painbar i { background: linear-gradient(90deg, var(--warn), var(--danger)); }
 #readout { font: 500 11px/1.2 var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
-#zoom { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-#zoom button { padding: 2px 9px; min-width: 30px; }
+#zoom { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+#grip { display: grid; gap: 5px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.07); }
+#grip[hidden] { display: none; }
+.grow { display: flex; align-items: center; gap: 4px; }
+.grow .lbl { width: 46px; flex: none; }
+.grow button { padding: 2px 6px; min-width: 26px; }
+.gval { font: 500 12px/1 var(--font-mono); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#grip label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); flex: 1; cursor: pointer; }
+#zoom button { padding: 2px 7px; min-width: 26px; }
 #zoomv { font: 500 12px/1 var(--font-mono); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #addsize { width: 72px; accent-color: var(--accent); }
 #addsel { max-width: 170px; }
@@ -188,6 +195,11 @@ body.bodyview #tray:hover { opacity: 1; }
       <div class="meter" title="How close the blemish is to giving way. Violet: the roof will pop outward (good). Amber: the wall would burst inward under the skin (stop and open it instead).">Pop<div class="bar" id="popbar"><i></i></div></div>
       <div id="readout">—</div>
       <div id="perf" hidden></div>
+      <div id="grip" hidden>
+        <div class="grow"><span class="lbl">Grip</span><button id="grl" title="Turn the grip anticlockwise (Q, or Alt+scroll)" aria-label="Turn grip anticlockwise">⟲</button><span class="gval" id="gripa">0°</span><button id="grr" title="Turn the grip clockwise (E, or Alt+scroll)" aria-label="Turn grip clockwise">⟳</button><button id="gr90" title="Turn the grip 90° (R)">90°</button></div>
+        <div class="grow"><span class="lbl">Spread</span><button id="gsm" title="Pads closer together ([ or Shift+scroll)" aria-label="Pads closer">−</button><span class="gval" id="gripv">—</span><button id="gsp" title="Pads further apart (] or Shift+scroll)" aria-label="Pads further apart">+</button></div>
+        <div class="grow"><label title="Pressing on a blemish centres the grip on it. Off: the grip goes exactly where you press (hold Alt for the same, once)."><input type="checkbox" id="gsnap" checked> Centre on blemish</label><button id="greset" title="Upright, centred, fitted grip again">Reset</button></div>
+      </div>
       <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Show the whole patch (in the face view: frame the face)">Fit</button><button id="zbody" title="Zoom out to the whole face and upper body">Face</button></div>
     </section>
   </div>

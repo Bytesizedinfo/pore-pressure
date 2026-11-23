@@ -264,8 +264,8 @@ PP.LTYPES = {
 PP.TOOLS = [
   { id: 'move', name: 'Move', group: 'Hands', key: 'M', opt: 'Drag to move around the skin. Hold Space to do the same with any instrument; right-drag works too.' },
   { id: 'wipe', name: 'Saline wipe', group: 'Hands', key: 'S', opt: 'Drag to wipe away blood, pus and stains (heavy or dried stains take two or three passes); hold still to blot. Each time you pick it up you get a fresh one.' },
-  { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Scroll to set spread; Q/E rotate. On touch, pinch with two fingers.' },
-  { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid.' },
+  { id: 'fingers', name: 'Gloved fingers', group: 'Hands', key: '1', opt: 'Hold to squeeze. Press on a blemish to centre the grip on it, or beside it to put the grip there (Alt: exactly where you press). Q/E, Alt+scroll or R (90°) rotate; arrow keys move it, even mid-squeeze; [ ] or Shift+scroll set the spread. On touch, pinch with two fingers.' },
+  { id: 'swabs', name: 'Cotton swabs', group: 'Hands', key: '2', opt: 'Hold to press two swabs together. Smaller, more focused contact; absorbs fluid. Rotate and move the grip like the fingers: Q/E, Alt+scroll, R, arrow keys.' },
   { id: 'loop', name: 'Comedone loop', group: 'Extraction', key: '3', opt: 'Centre the ring over the pore and hold. Scroll changes loop size (1.5 / 2.5 mm).' },
   { id: 'vacuum', name: 'Pore vacuum', group: 'Extraction', key: '4', opt: 'Hold to apply suction (scroll: 40–65 kPa). Makers advise ≤3 s per spot.' },
   { id: 'needle', name: 'Sterile needle', group: 'Sharps', key: '5', opt: 'Tap to de-roof a head. Drag upward over an ingrown hair to lift the loop.' },

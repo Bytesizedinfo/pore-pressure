@@ -14,6 +14,7 @@ PP.Tools = function (W) {
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
   this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
+  this.gripOff = { x: 0, y: 0 }; this.snap = true; this.gripShowUntil = 0; this.altKey = false;   // where you put the grip
   this.wipeCol = [0.94, 0.94, 0.93]; this.wipeVol = 0; this.wipeStain = [0.62, 0.07, 0.08];   // the saline wipe soaks up the colour of what it picks up
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
@@ -47,12 +48,46 @@ PP.Tools.prototype.nudge = function (id, k) {
   if (this.spread[id] == null) return;
   this.fitOff[id] = PP.clamp(this.fitOff[id] + k, -10, 15);
   this.spread[id] = PP.clamp(this.spread[id] + k, 1.5, 25);
+  this.showGrip();
+};
+// where the grip goes: centred on the blemish when you press on it, otherwise where you press (still spaced
+// for the nearest blemish). Alt, or "Centre on blemish" off, places it exactly where you press. Your arrow-key
+// offset (gripOff) is added live, so it also moves the pads mid-squeeze.
+PP.Tools.prototype.gripPlace = function (x, y, noSnap) {
+  const id = this.id, isF = id === 'fingers';
+  const f = this.fitFor(x, y);
+  let cx = x, cy = y, s = this.spread[id], snapped = false;
+  if (f) {
+    s = f.s;
+    if (this.snap && !noSnap && Math.hypot(x - f.cx, y - f.cy) <= f.L.R + (isF ? 1.5 : 0.8)) { cx = f.cx; cy = f.cy; snapped = true; }
+  }
+  return { cx, cy, s, f, snapped };
+};
+PP.Tools.prototype.showGrip = function () { const W = this.W; this.gripShowUntil = W.time + 1.5; W.activeUntil = Math.max(W.activeUntil || 0, W.time + 1.6); };
+// rotate in 15 degree steps; the two pads are symmetric, so 0-165 degrees covers every orientation
+PP.Tools.prototype.rotate = function (steps) {
+  const k = Math.round(this.angle / (Math.PI / 12)) + steps;
+  this.angle = (((k % 12) + 12) % 12) * (Math.PI / 12);
+  this.showGrip();
+};
+PP.Tools.prototype.moveGrip = function (dx, dy) {
+  this.gripOff.x = PP.clamp(this.gripOff.x + dx, -12, 12); this.gripOff.y = PP.clamp(this.gripOff.y + dy, -12, 12);
+  this.showGrip();
+};
+PP.Tools.prototype.resetGrip = function () {
+  this.angle = 0; this.gripOff.x = 0; this.gripOff.y = 0; this.snap = true;
+  for (const id of ['fingers', 'swabs']) { this.spread[id] -= this.fitOff[id]; this.fitOff[id] = 0; }
+  this.showGrip();
 };
 PP.Tools.prototype.down = function (x, y, opt = {}) {
   const p = this.ptr;
   Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0, build: !!opt.fit });
   this.fitDX = 0; this.fitDY = 0;
-  if (opt.fit) { const f = this.fitFor(x, y); if (f) { this.spread[this.id] = f.s; this.fitDX = f.cx - x; this.fitDY = f.cy - y; } }
+  if (opt.fit && (this.id === 'fingers' || this.id === 'swabs')) {
+    const g = this.gripPlace(x, y, opt.alt);
+    if (g.f) this.spread[this.id] = g.s;
+    this.fitDX = g.cx - x; this.fitDY = g.cy - y;
+  }
   this.stroke++;
   const W = this.W;
   if (this.id === 'gauze' && opt.shift) { W.S.shield = !W.S.shield; W.fx.toast('', 'Splatter shield ' + (W.S.shield ? 'on' : 'off'), W.S.shield ? 'Gauze held loosely over the lesion catches spray (AAFP).' : ''); p.down = false; return; }
@@ -234,20 +269,21 @@ PP.Tools.prototype.update = function (dt) {
       F = PP.clamp((this.touch.d0 - d) * (isF ? 1.6 : 0.9) + 0.6, 0, isF ? 9 : 4);
     } else if (p.down) {
       const s = this.spread[id];
-      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX, my = p.y + this.fitDY;
+      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX + this.gripOff.x, my = p.y + this.fitDY + this.gripOff.y;
       c1 = { x: mx - ax * s, y: my - ay * s }; c2 = { x: mx + ax * s, y: my + ay * s };
       F = ramp(0.9, isF ? (p.shift ? 10 : 6) : 3);
       // a real press keeps building slowly while held, so big or deep lesions simply take longer
       if (p.build && !p.shift) F = Math.min(isF ? 10 : 4, F + Math.max(0, p.t - 1.2) * (isF ? 1.0 : 0.4));
     } else if (!this.touch) {
-      // hovering near a blemish: faint rings where the pads would land
-      const f = this.fitFor(p.x, p.y);
-      if (f) {
+      // hovering near a blemish (or just after you turned or moved the grip): faint rings where the pads would land
+      const g = this.gripPlace(p.x, p.y, this.altKey);
+      if (g.f || W.time < this.gripShowUntil) {
         const ax = Math.cos(this.angle), ay = Math.sin(this.angle), a = isF ? 3.9 : 2.0;
+        const gx = g.cx + this.gripOff.x, gy = g.cy + this.gripOff.y;
         for (const sg of [-1, 1]) {
-          const cx = f.cx + ax * f.s * sg, cy = f.cy + ay * f.s * sg, z = W.skinH(cx, cy) + 0.1;
-          for (let k = 0; k < 10; k++) {
-            const a0 = (k / 10) * Math.PI * 2, a1 = ((k + 1) / 10) * Math.PI * 2;
+          const cx = gx + ax * g.s * sg, cy = gy + ay * g.s * sg, z = W.skinH(cx, cy) + 0.1;
+          for (let k = 0; k < 24; k++) {
+            const a0 = (k / 24) * Math.PI * 2, a1 = ((k + 1) / 24) * Math.PI * 2;
             this.prim([cx + Math.cos(a0) * a, cy + Math.sin(a0) * a, z, 0.05, cx + Math.cos(a1) * a, cy + Math.sin(a1) * a, z, 0.05], 1, PP.MATOBJ.nitrile, [0.55, 0.5, 0.95, 0]);
           }
         }
@@ -492,8 +528,8 @@ PP.Tools.prototype.update = function (dt) {
   } else if (id === 'gauze') {
     const zr = W.skinH(p.x, p.y);
     if (p.down) {
-      if (p.speed > 4) W.decals.wipe(p.x, p.y, 6, this.W);
-      else if (p.t > 0.25) { W.wounds.press.push({ x: p.x, y: p.y, r: 6.5, k: 1 }); ph.contacts.push({ x: p.x, y: p.y, a: 6, fn: 1.2 }); }
+      if (p.speed > 4) { W.decals.wipe(p.x, p.y, 6, this.W); W.wounds.wick(p.x, p.y, 6, 0.3 * Math.hypot(p.x - p.lx, p.y - p.ly)); }
+      else if (p.t > 0.25) { W.wounds.press.push({ x: p.x, y: p.y, r: 6.5, k: 1 }); ph.contacts.push({ x: p.x, y: p.y, a: 6, fn: 1.2 }); W.wounds.wick(p.x, p.y, 6.5, dt * 0.8); }
       W.absorb(p.x, p.y, 6.5, zr + 3);
     }
     this.primRaw([p.x, p.y, zr + (p.down ? 0.6 : 3), 0, 9, 9, 0.6, 0.15, 2, PP.MATOBJ.gauze, 0, 0, W.decals.gauzeCol[0], W.decals.gauzeCol[1], W.decals.gauzeCol[2], 0.35]);
@@ -508,19 +544,25 @@ PP.Tools.prototype.update = function (dt) {
       let ws = this.ws;
       if (!ws) { ws = this.ws = { x: p.x, y: p.y, blot: 0 }; W.render.brush(p.x, p.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub'); }
       let d = Math.hypot(p.x - ws.x, p.y - ws.y);
-      const moved = d;
       while (d >= 0.6) {
         ws.x += ((p.x - ws.x) * 0.6) / d; ws.y += ((p.y - ws.y) * 0.6) / d; d -= 0.6;
         W.render.brush(ws.x, ws.y, 3.8, [0.06, 0.06, 0.09, 0.006], 'sub');
       }
-      if (Math.hypot(p.x - p.lx, p.y - p.ly) < 0.02 && p.t > 0.2) {
+      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
+      if (L < 0.02 && p.t > 0.2) {
         ws.blot += dt;
         while (ws.blot >= 0.1) { ws.blot -= 0.1; W.render.brush(p.x, p.y, 3.8, [0.01, 0.03, 0.08, 0], 'sub'); }
+        // holding a moist gauze on a cut is light pressure: it slows the ooze and helps it clot
+        W.wounds.press.push({ x: p.x, y: p.y, r: 4.3, k: 0.6 });
+        W.wounds.wick(p.x, p.y, 4.3, dt * 0.8);
       }
       W.wipeAt(p.x, p.y, 4.3, zr + 4);
-      // wiping across a fresh cut disturbs its clot: it oozes again
-      const L = Math.hypot(p.x - p.lx, p.y - p.ly);
-      if (L > 0) for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 3) c.clot = Math.max(0, c.clot - 0.003 * L);
+      // the gauze wicks the blood out of the slit (a clot that has formed stays); dragging right along the cut
+      // line catches the fresh clot a little
+      if (L > 0) {
+        W.wounds.wick(p.x, p.y, 4.3, 0.35 * L);
+        for (const c of W.wounds.cuts) if (W.wounds.segDist(c, p.x, p.y) < 1.5) c.clot = Math.max(0, c.clot - 0.001 * L);
+      }
     } else this.ws = null;
     const g = this.wipeCol;
     this.primRaw([p.x, p.y, zr + (p.down ? 0.53 : 3), 0, 4.6, 4.6, 0.5, 0.25, 2, PP.MATOBJ.gauze, 0, 0, g[0], g[1], g[2], 0.35]);

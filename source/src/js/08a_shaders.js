@@ -581,7 +581,8 @@ void main(){
               : vec3(0.84,0.45,0.42);
       wc = mix(wc, lc, lay);
     }
-    wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*clamp(0.55+0.4*(1.0-film.r*0.0),0.0,1.0)*smoothstep(0.1,0.6,wd));
+    // blood in the slit: it fills from the bottom of the V, so a part-filled cut shows red along its deepest line first
+    wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*0.95*smoothstep(0.1,0.6,wd)*smoothstep(0.0,0.35,wLay.w - 0.6*(1.0-clamp(wd/max(uDermis,0.3),0.0,1.0))));
     alb = mix(alb, wc, inW);
   }
   if(pun>0.0) alb = mix(alb, vec3(0.3,0.03,0.03)*uBloodOn + vec3(0.5,0.35,0.3)*(1.0-uBloodOn), pun*0.8);

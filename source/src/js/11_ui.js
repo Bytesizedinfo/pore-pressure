@@ -56,6 +56,14 @@ PP.UI.prototype.build = function () {
   this.renderTones();
   $('newpatch').addEventListener('click', () => { W.newPatch(Math.floor(Math.random() * 1e9)); this.sel = null; });
   $('wait').addEventListener('click', () => { W.timelapse(+$('waitsel').value); });
+  // grip controls (fingers and cotton swabs)
+  $('grl').addEventListener('click', () => T.rotate(1));
+  $('grr').addEventListener('click', () => T.rotate(-1));
+  $('gr90').addEventListener('click', () => T.rotate(6));
+  $('gsm').addEventListener('click', () => T.nudge(T.id, -0.4));
+  $('gsp').addEventListener('click', () => T.nudge(T.id, 0.4));
+  $('gsnap').addEventListener('change', (e) => { T.snap = e.target.checked; });
+  $('greset').addEventListener('click', () => { T.resetGrip(); $('gsnap').checked = true; });
   $('cleanskin').addEventListener('click', () => { W.cleanSkin(); this.toast('', 'Skin cleaned', 'Blood, pus and stains wiped away. Use the Saline wipe (S) to clean just one spot.'); });
   $('wipelens').addEventListener('click', () => { W.render.drops.length = 0; W._lensToast = 0; this.toast('', 'Lens wiped', ''); });
   const mute = $('mute');
@@ -222,6 +230,15 @@ PP.UI.prototype.update = function (dt) {
   if (L && L.P > 0.5) ro += (ro ? ' · ' : '') + 'cavity ' + L.P.toFixed(0) + ' kPa';
   if (L) { const t = W.wounds.heatAt(L.x, L.y); L.maxT = Math.max(L.maxT || 0, t); if (t > 33.2) ro += (ro ? ' · ' : '') + t.toFixed(1) + ' °C'; }
   this.$('readout').textContent = ro || '—';
+  // grip readout: angle, and the pad-to-pad distance you would get pressing here
+  { const gr = this.$('grip'), on = T.id === 'fingers' || T.id === 'swabs';
+    if (gr.hidden === on) gr.hidden = !on;
+    if (on) {
+      const s = T.ptr.down ? T.spread[T.id] : T.gripPlace(T.ptr.x, T.ptr.y, T.altKey).s;
+      const a = Math.round((T.angle * 180) / Math.PI) + '°', v = (2 * s).toFixed(1) + ' mm';
+      if (this._ga !== a) { this._ga = a; this.$('gripa').textContent = a; }
+      if (this._gv !== v) { this._gv = v; this.$('gripv').textContent = v; }
+    } }
   if (W.S.perf) {
     const R = W.render, pf = PP.main.fps ? PP.main.fps.toFixed(0) + ' fps' : '';
     this.$('perf').hidden = false;
@@ -278,8 +295,8 @@ PP.UI.prototype.bindInput = function () {
     // smart drag: a press on clear skin (nothing for this instrument to work on) pans when it moves,
     // and becomes a normal press if held still; blades, needles and injections always act
     if (e.button === 0 && this.ptrs.size === 1 && this.canPanFrom(p.x, p.y, T.id)) {
-      const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
-      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure, fit: true }); } }, 220);
+      const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, alt: e.altKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
+      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, alt: q.alt, pressure: q.pressure, fit: true }); } }, 220);
       return;
     }
     if (this.ptrs.size === 2) {
@@ -292,7 +309,7 @@ PP.UI.prototype.bindInput = function () {
       else this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: W.cam.zoom, cx: W.cam.x, cy: W.cam.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       return;
     }
-    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
+    T.down(p.x, p.y, { shift: e.shiftKey, alt: e.altKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
   });
   cv.addEventListener('pointermove', (e) => {
     if (body()) { body().move(e); return; }
@@ -340,6 +357,7 @@ PP.UI.prototype.bindInput = function () {
       this.clampCam(); W.cam.tx = W.cam.x; W.cam.ty = W.cam.y; return;
     }
     const p = this.toWorld(e.clientX, e.clientY);
+    T.altKey = e.altKey;
     if (this.eraseDrag) { this.eraseAt(p.x, p.y); return; }
     if (!T.ptr.down) {
       T.ptr.x = p.x; T.ptr.y = p.y; T.ptr.lx = p.x; T.ptr.ly = p.y;
@@ -369,8 +387,14 @@ PP.UI.prototype.bindInput = function () {
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (body()) { body().wheel(e); return; }
+    if (e.altKey && (T.id === 'fingers' || T.id === 'swabs')) {
+      // Alt+scroll turns the grip: one 15 degree step per wheel notch (trackpads accumulate)
+      this.rotAcc = (this.rotAcc || 0) + (e.deltaY || e.deltaX);
+      while (Math.abs(this.rotAcc) >= 60) { T.rotate(this.rotAcc > 0 ? -1 : 1); this.rotAcc -= Math.sign(this.rotAcc) * 100; if (Math.abs(this.rotAcc) < 60) this.rotAcc = 0; }
+      return;
+    }
     if (e.shiftKey) {
-      const k = e.deltaY > 0 ? -1 : 1;
+      const k = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
       if (T.id === 'fingers' || T.id === 'swabs') T.nudge(T.id, k * 0.3);
       else if (T.id === 'loop') T.loopR = T.loopR > 1 ? 0.75 : 1.25;
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
@@ -407,7 +431,14 @@ PP.UI.prototype.bindInput = function () {
     const k = e.key.toUpperCase();
     const t = PP.TOOLS.find((x) => x.key === k);
     if (t) { T.select(t.id); return; }
-    if (k === 'Q') T.angle += 0.2; else if (k === 'E') T.angle -= 0.2;
+    const grip = T.id === 'fingers' || T.id === 'swabs';
+    if (grip && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const s = e.shiftKey ? 2 : 0.5;
+      T.moveGrip(e.key === 'ArrowLeft' ? -s : e.key === 'ArrowRight' ? s : 0, e.key === 'ArrowUp' ? s : e.key === 'ArrowDown' ? -s : 0);
+      return;
+    }
+    if (k === 'Q') T.rotate(1); else if (k === 'E') T.rotate(-1); else if (k === 'R') T.rotate(6);
     else if (k === '[') T.nudge(T.id, -0.4);
     else if (k === ']') T.nudge(T.id, 0.4);
     else if (e.key === '+' || e.key === '=') this.zoomBy(1.35);
