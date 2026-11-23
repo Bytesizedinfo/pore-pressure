@@ -111,6 +111,7 @@ select { background: var(--panel-solid); border: 1px solid var(--line); border-r
 #gl.erasing { cursor: cell; }
 #gl.pannable { cursor: grab; } #gl.grab { cursor: grab; } #gl.grabbing { cursor: grabbing; }
 #gl.orbit { cursor: grab; } #gl.orbit.pointing { cursor: zoom-in; } #gl.orbit.grabbing { cursor: grabbing; }
+#popbar.deep i { background: var(--warn) !important; }
 #bodylabel { position: fixed; z-index: 5; pointer-events: none; transform: translate(14px, 14px); padding: 6px 9px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--line); font: 500 11px/1.3 var(--font-mono); color: var(--fg); white-space: nowrap; }
 #bodylabel b { font-weight: 600; color: var(--accent); }
@@ -190,6 +191,7 @@ body.bodyview #tray:hover { opacity: 1; }
     <section id="meters" class="panel">
       <div class="meter">Force<div class="bar" id="forcebar"><i></i></div></div>
       <div class="meter">Pain<div class="bar" id="painbar"><i></i></div></div>
+      <div class="meter" title="How close the blemish is to giving way. Violet: the roof will pop outward (good). Amber: the wall would burst inward under the skin (stop and open it instead).">Pop<div class="bar" id="popbar"><i></i></div></div>
       <div id="readout">—</div>
       <div id="perf" hidden></div>
       <div id="zoom"><span class="lbl">Zoom</span><button id="zout" aria-label="Zoom out">−</button><span id="zoomv">1.0×</span><button id="zin" aria-label="Zoom in">+</button><button id="zfit" title="Show the whole patch (in the face view: frame the face)">Fit</button><button id="zbody" title="Zoom out to the whole face and upper body">Face</button></div>
@@ -509,6 +511,15 @@ PP.AREAS = {
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.05, hair: 0, mix: [] },
 };
 
+// How much each dome swells under squeezing pressure (fraction of its height at ~30 kPa): fluid-filled cysts are
+// fluctuant and bulge, pustule and whitehead domes rise, open pores stay flat (their plug rises instead), solid
+// papules, nodules and lobular lesions barely change.
+PP.BULGE = { pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
+  milium: 0.3, furuncle: 0.5, carbuncle: 0.45, pseudocyst: 0.6, papule: 0.12, nodule: 0.1, sebhyper: 0.05, epidermoid: 0.9,
+  pilar: 0.7, steatocystoma: 0.85, lipoma: 0.08, ingrown: 0.4, molluscum: 0.3 };
+// what an incision exposes below the roof: 1 cyst wall + keratin, 2 pus pocket, 3 fat lobules, 4 chalk
+PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
+
 /* Close-ups anywhere on the face/body: the region under the cursor picks a base area (skin mechanics, scan set,
    hair) and a blemish mix typical of that site. Comedones and milia favour the T-zone, temples and the ear's
    concha; ingrown hairs the beard area and neck; steatocystoma the chest; pilar cysts the scalp; boils and cysts
@@ -686,6 +697,8 @@ PP.CREDITS = [
   ['Studio lighting: Poly Haven "Monochrome Studio 04" HDRI (CC0).', 'https://polyhaven.com/a/monochrome_studio_04'],
   ['Face and upper body: MakeHuman base mesh (CC0 1.0), cropped to a bust, subdivided, ambient occlusion baked.', 'https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md'],
 ];
+// attach the per-type swelling once the lesion types exist
+for (const [k, v] of Object.entries(PP.BULGE)) if (PP.LTYPES[k]) PP.LTYPES[k].bulge = v;
 
 /* ---- 03_physics.js ---- */
 'use strict';
@@ -1206,7 +1219,7 @@ PP.Lesion.prototype.solid = function () { return this.T.open === 'none' && !this
 // current visible dome height (mm)
 PP.Lesion.prototype.domeH = function () {
   const f = this.queue.length ? this.fill() : 1;
-  const press = 1 + 0.5 * PP.clamp(this.P / 30, 0, 1) * f;
+  const press = 1 + (this.T.bulge != null ? this.T.bulge : 0.5) * PP.clamp(this.P / 30, 0, 1) * f;
   let h = this.H0 * press * (0.25 + 0.75 * f) * (1 + 0.35 * this.deep);
   if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis') h = this.H0;
   if (this.steroidT >= 0) h *= PP.clamp(1 - this.steroidT / (2.5 * 86400), 0.15, 1);
@@ -1262,6 +1275,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
     const sRoof = T.roofS ? (Math.max(0, this.P - cover) * Rc) / (2 * tRoof) : 0;
     const sWall = (this.P * Math.max(this.rc, 0.2)) / (2 * this.wallT);
     const rRoof = T.roofS ? sRoof / this.roofS : 0, rWall = sWall / this.wallS;
+    this.rRoof = rRoof; this.rWall = rWall;   // for the pop meter: how close the roof / the wall is to giving way
     if (rWall > 1 && rWall >= rRoof && this.deep < 1) this.deepRupture(ctx, cover > this.P * 0.6 ? 'covered' : 'closed');
     else if (rRoof > 1) this.surfaceRupture(ctx, Rc);
     // punctum: thick keratin may squeeze through the tiny opening (DermNet) before the wall fails
@@ -1271,6 +1285,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
       if (Q > 0) this.emitFlow(ctx, Q, dt, this.punctum, true);
     }
   } else if (this.open.r > 0 && !this.done) {
+    this.rRoof = 0; this.rWall = 0;
     // with an opening: excess compression fragments a thin cyst wall (AAFP / StatPearls)
     if (this.sac && this.sac.integrity > 0.2) {
       const sWall = (this.P * Math.max(this.rc, 0.2)) / (2 * this.wallT);
@@ -1307,6 +1322,22 @@ PP.Lesion.prototype.surfaceRupture = function (ctx, Rc) {
     if (vol > 0) this.spray(ctx, vol, v, thin ? 0.55 : 0.25, c);
   }
   ctx.fx.toast('good', 'Pop', 'The roof gave way at the apex: the thin-shell stress in the roof exceeded its strength before the wall did.');
+};
+
+// a fresh incision into a pressurised lesion: the stored pressure drives contents out at once
+// (thin contents gush along the cut; thick ones bulge into it)
+PP.Lesion.prototype.incisionRelease = function (ctx, kind) {
+  const c = this.cur(); if (!c || c.vol <= 0 || this.T.mobile) return;
+  const intrinsic = this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0;
+  const Pst = Math.max(this.P, intrinsic * this.fill());
+  if (Pst < 1.5 || (c.k !== 'liquid' && c.k !== 'paste')) return;
+  const thin = c.k === 'liquid' && (c.mu || 1) < 400;
+  const frac = PP.clamp(0.04 + Pst / 40, 0.04, thin ? 0.4 : 0.12);
+  const vol = Math.min(c.vol, this.V0 * frac * ctx.S.spurt);
+  if (vol <= 0) return;
+  this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
+  this.events.push('gush');
+  ctx.fx.toast('', thin ? 'Gush' : 'Contents bulge', thin ? 'The incision released the stored pressure at once: contents gushed out along the cut.' : 'Thick contents bulged straight into the fresh incision.');
 };
 
 PP.Lesion.prototype.deepRupture = function (ctx, why) {
@@ -1734,6 +1765,10 @@ PP.Wounds.prototype.openLesions = function (x, y, rOpen, depth, kind, len, cx, c
     if (L.T.mobile && len) L.open.r = Math.max(L.open.r, 0.6);
     if (prev <= 0 && L.open.r > 0) {
       L.state = L.state === 'intact' ? 'opened' : L.state; L.events.push('opened:' + kind);
+      // what the blade finds depends on the lesion
+      const blade = kind === 'blade11' || kind === 'blade15' || kind === 'punch';
+      if (blade && L.queue.length) L.incisionRelease(this.W.ctx, kind);
+      if (blade && L.solid() && !L._solidCut) { L._solidCut = 1; this.W.fx.toast('warn', 'Nothing to drain', 'This is solid inflammation, not a cavity: the cut only bleeds (MSD). Leave it, or inject steroid.'); }
       // injecting into / incising a pressurised abscess: pus wells up immediately
       if ((L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'pseudocyst' || L.type === 'giant') && L.P > 2) L.surfaceRuptureLike = true;
       if (L.hair && kind === 'needle') { /* tip still embedded until lifted */ }
@@ -1785,10 +1820,14 @@ PP.Wounds.prototype.updCut = function (c) {
   c.gape = this.W.phys.cutGape(dx, dy, len / 2, c.depth / lim.dermis);
   const mx = (c.ax + c.bx) / 2, my = (c.ay + c.by) / 2;
   const rEq = Math.sqrt((len * Math.max(c.gape, 0.22 * len)) / Math.PI);
-  // any lesion the cut crosses gets an opening
+  // any lesion the cut crosses gets an opening; the cut remembers what it went through
   for (const L of this.W.lesions) {
     const d = this.segDist(c, L.x + L.ox, L.y + L.oy);
-    if (d < Math.max(L.R * 0.6, 0.6)) this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
+    if (d >= Math.max(L.R * 0.6, 0.6)) continue;
+    if (!c.L || L.R > c.L.R) { c.L = L; c.layer = PP.CUTLAYER[L.type] || 0; c.layerZ = Math.max(L.roofT, 0.05); }
+    c.inflam = Math.max(c.inflam || 0, L.inflam + (L.deep || 0) * 0.4);
+    if (L.T.open === 'open' && (c.blade === 'blade11' || c.blade === 'blade15') && !L._openCut) { L._openCut = 1; this.W.fx.toast('warn', 'Already open', 'A blackhead has its own pore: cutting only adds a wound. Use the comedone loop.'); }
+    this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
   }
 };
 PP.Wounds.prototype.segDist = function (c, x, y) {
@@ -1900,7 +1939,7 @@ PP.Wounds.prototype.stepBleed = function (dt) {
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const n = emit(c, 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
+    const n = emit(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
     for (let k = 0; k < n; k++) {
       const t = W.rng(), side = W.rng() < 0.5 ? -1 : 1;
       const x = PP.lerp(c.ax, c.bx, t) - c.dy * side * c.gape * 0.5, y = PP.lerp(c.ay, c.by, t) + c.dx * side * c.gape * 0.5;
@@ -1952,6 +1991,7 @@ PP.Tools = function (W) {
   this.ptr = { down: false, x: 0, y: 0, x0: 0, y0: 0, t: 0, pressure: 0, moved: 0, shift: false, lx: 0, ly: 0, speed: 0 };
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
+  this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
   this.prims = new Float32Array(16 * 160); this.nPrim = 0;
@@ -1968,9 +2008,27 @@ PP.Tools.prototype.select = function (id) {
   this.W.fx.toolChanged(id);
 };
 
+// fingers / cotton buds: the pads land just outside the edge of the blemish you press on (tight for a comedone,
+// wide for a cyst), centred on it; [ ] or Shift+scroll nudge the spacing from there
+PP.Tools.prototype.fitFor = function (x, y) {
+  const id = this.id; if (id !== 'fingers' && id !== 'swabs') return null;
+  const isF = id === 'fingers';
+  let best = null, bd = 1e9;
+  for (const L of this.W.lesions) { const d = Math.hypot(x - L.x - L.ox, y - L.y - L.oy) - L.R; if (d < bd) { bd = d; best = L; } }
+  if (!best || bd > (isF ? 5 : 3)) return null;
+  const base = best.R + (isF ? 0.55 * 4.2 + 1.2 : 0.55 * 2.0 + 0.8);
+  return { L: best, s: PP.clamp(base + this.fitOff[id], isF ? 2.2 : 1.5, 25), cx: best.x + best.ox, cy: best.y + best.oy };
+};
+PP.Tools.prototype.nudge = function (id, k) {
+  if (this.spread[id] == null) return;
+  this.fitOff[id] = PP.clamp(this.fitOff[id] + k, -10, 15);
+  this.spread[id] = PP.clamp(this.spread[id] + k, 1.5, 25);
+};
 PP.Tools.prototype.down = function (x, y, opt = {}) {
   const p = this.ptr;
-  Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0 });
+  Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0, build: !!opt.fit });
+  this.fitDX = 0; this.fitDY = 0;
+  if (opt.fit) { const f = this.fitFor(x, y); if (f) { this.spread[this.id] = f.s; this.fitDX = f.cx - x; this.fitDY = f.cy - y; } }
   this.stroke++;
   const W = this.W;
   if (this.id === 'gauze' && opt.shift) { W.S.shield = !W.S.shield; W.fx.toast('', 'Splatter shield ' + (W.S.shield ? 'on' : 'off'), W.S.shield ? 'Gauze held loosely over the lesion catches spray (AAFP).' : ''); p.down = false; return; }
@@ -2152,9 +2210,24 @@ PP.Tools.prototype.update = function (dt) {
       F = PP.clamp((this.touch.d0 - d) * (isF ? 1.6 : 0.9) + 0.6, 0, isF ? 9 : 4);
     } else if (p.down) {
       const s = this.spread[id];
-      const ax = Math.cos(this.angle), ay = Math.sin(this.angle);
-      c1 = { x: p.x - ax * s, y: p.y - ay * s }; c2 = { x: p.x + ax * s, y: p.y + ay * s };
+      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX, my = p.y + this.fitDY;
+      c1 = { x: mx - ax * s, y: my - ay * s }; c2 = { x: mx + ax * s, y: my + ay * s };
       F = ramp(0.9, isF ? (p.shift ? 10 : 6) : 3);
+      // a real press keeps building slowly while held, so big or deep lesions simply take longer
+      if (p.build && !p.shift) F = Math.min(isF ? 10 : 4, F + Math.max(0, p.t - 1.2) * (isF ? 1.0 : 0.4));
+    } else if (!this.touch) {
+      // hovering near a blemish: faint rings where the pads would land
+      const f = this.fitFor(p.x, p.y);
+      if (f) {
+        const ax = Math.cos(this.angle), ay = Math.sin(this.angle), a = isF ? 3.9 : 2.0;
+        for (const sg of [-1, 1]) {
+          const cx = f.cx + ax * f.s * sg, cy = f.cy + ay * f.s * sg, z = W.skinH(cx, cy) + 0.1;
+          for (let k = 0; k < 10; k++) {
+            const a0 = (k / 10) * Math.PI * 2, a1 = ((k + 1) / 10) * Math.PI * 2;
+            this.prim([cx + Math.cos(a0) * a, cy + Math.sin(a0) * a, z, 0.05, cx + Math.cos(a1) * a, cy + Math.sin(a1) * a, z, 0.05], 1, PP.MATOBJ.nitrile, [0.55, 0.5, 0.95, 0]);
+          }
+        }
+      }
     }
     if (c1 && c2) {
       // soft pads: a thumb pad contacts ~51.6 mm^2 at 1.5 N and ~65.7 mm^2 at 5 N (area ~ F^0.19); cotton tips barely spread
@@ -2728,7 +2801,7 @@ uniform vec3 uTone;   // melanin, hemoglobin, shade means
 uniform vec3 uToneA;  // variation amplitudes
 uniform vec3 uVM, uVH, uVS;
 uniform vec3 uSH[9]; uniform float uYaw, uExposure, uRing; uniform vec3 uKey;
-uniform vec4 uCut0[16]; uniform vec4 uCut1[16]; uniform int uNCut;
+uniform vec4 uCut0[16]; uniform vec4 uCut1[16]; uniform vec4 uCut2[16]; uniform int uNCut;
 uniform vec4 uHole0[8]; uniform vec4 uHole1[8]; uniform int uNH;
 uniform vec4 uPun[32]; uniform int uNP;
 uniform vec2 uT; uniform float uDermis, uEpi;
@@ -2803,6 +2876,7 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   vec4 c=LD(i,2), d=LD(i,3), e=LD(i,4), f=LD(i,5);
   int vis=int(b.x+0.5); float infl=b.y, headR=b.z, openR=b.w;
   float deflate=d.y, crater=d.z, punct=d.w, seed=e.x, point=e.y, hema=e.z, ext2=e.w;
+  float pn=f.x;   // squeezing pressure, normalised
   float k = (vis==18)?1.0:(vis>=15&&vis<=17)?1.25:(vis==13||vis==9||vis==10||vis==11)?1.35:1.7;
   float dome = domeP(r,R,k) + (r<R?0.0:0.0);
   float h = H*dome;
@@ -2810,7 +2884,9 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   if(vis==0||vis==5){ h -= (vis==0?0.05:0.02)*exp(-r*r/(openR*openR*1.6+1e-4)); }
   if(vis==3){ h -= 0.28*(1.0-smoothstep(openR*0.7, openR*1.35, r)); h += 0.05*exp(-pow((r-openR*1.45)/(openR*0.5),2.0)); }
   if(vis==14){ h -= H*0.45*exp(-r*r/(R*R*0.05)); }
-  if(vis==20){ h -= H*0.35*exp(-r*r/(R*R*0.06)); }
+  if(vis==20){ h -= H*0.35*exp(-r*r/(R*R*0.06)); h += pn*0.08*(1.0-smoothstep(R*0.1,R*0.32,r)); }
+  // open pores: the plug rises out of the pore as pressure builds, before it extrudes
+  if((vis==0||vis==3||vis==4||vis==5) && pn>0.0) h += pn*0.12*(1.0-smoothstep(0.0, openR*1.1, r))*(1.0-ext2);
   // opened / deflated: hole at the apex, loose wrinkled skin
   if(openR>0.0 && vis!=0 && vis!=3 && vis!=5 && vis!=4){ h -= min(0.25, openR*0.8)*exp(-r*r/(openR*openR*1.2)); }
   if(deflate>0.0){ float th=atan(q.y,q.x); h += deflate*H*0.12*sin(th*7.0+seed*20.0+r*6.0)*dome; }
@@ -2822,21 +2898,24 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   o.hem += infl*0.75*halo;
   o.stretch = max(o.stretch, clamp(H/R*2.2,0.0,1.0)*dome);
   float tense = clamp(H/R*1.8,0.0,1.0)*dome*(1.0-deflate);
-  o.gloss = max(o.gloss, tense);
+  // squeezed domes go tight, pale and shiny (solid and lobular lesions far less)
+  float soft = (vis==12||vis==13||vis==14||vis==18) ? 0.3 : 1.0;
+  o.stretch = max(o.stretch, clamp(0.55*pn,0.0,1.0)*dome*soft);
+  o.gloss = max(o.gloss, tense + 0.4*pn*dome*soft);
   vec3 cc=c.rgb; float cm=0.0;
   if(vis==0){ float m=1.0-smoothstep(openR*0.75, openR*1.05, r); cm=m*(1.0-ext2); cc=mix(vec3(0.035,0.028,0.022),vec3(0.18,0.13,0.09),smoothstep(0.0,openR,r)); o.ao=min(o.ao,1.0-0.5*m*ext2); }
   else if(vis==5){ float m=1.0-smoothstep(openR*0.6, openR*1.2, r); cm=0.55*m*(1.0-ext2); cc=vec3(0.32,0.27,0.2); }
   else if(vis==3){ float m=1.0-smoothstep(openR*0.75, openR*1.0, r); cm=m*(1.0-ext2*0.85); cc=mix(vec3(0.05,0.045,0.04),vec3(0.2,0.18,0.15),vnoise(q*14.0)); o.ao=min(o.ao, 1.0-0.6*m); }
   else if(vis==4){ float m=1.0-smoothstep(0.12,0.22,r); cm=m*(1.0-ext2); cc=vec3(0.06,0.045,0.035);
     float th=atan(q.y,q.x); float sp=pow(abs(sin(th*4.5+seed*9.0)),40.0)*(1.0-smoothstep(0.2,0.55,r))*step(0.12,r); cm=max(cm,sp*0.8*(1.0-ext2)); }
-  else if(vis==6){ float m=1.0-smoothstep(R*0.7,R*0.92,r); cm=0.88*m*(1.0-ext2); cc=vec3(0.96,0.95,0.92); o.gloss=max(o.gloss,0.8*m); }
+  else if(vis==6){ float m=1.0-smoothstep(R*0.7,R*0.92,r); cm=min(1.0,0.88+0.1*pn)*m*(1.0-ext2); cc=vec3(0.96,0.95,0.92); o.gloss=max(o.gloss,0.8*m); }
   else if(vis==7||vis==8||vis==19){
     float m=1.0-smoothstep(headR*0.72, headR*1.02, r);
     float core=1.0-smoothstep(0.0, headR*0.8, r);
     cc = mix(c.rgb*vec3(1.02,1.0,0.94), c.rgb*vec3(1.05,0.97,0.78), core) * (0.92+0.16*vnoise(q*22.0+seed*40.0));
     cc = mix(cc, vec3(0.95,0.93,0.86), 0.25*(1.0-core));
-    cm=(0.42+0.36*core)*m*(1.0-deflate*0.7)*c.a; }
-  else if(vis==1||vis==2){ float m=1.0-smoothstep(headR*0.3, headR*1.1, r); cm=0.3*m*c.a; o.gloss=max(o.gloss,0.35*dome); }
+    cm=(0.42+0.36*core+0.22*pn)*m*(1.0-deflate*0.7)*c.a; cc=mix(cc, vec3(0.97,0.94,0.8), 0.25*clamp(pn,0.0,1.0)*core); }
+  else if(vis==1||vis==2){ float m=1.0-smoothstep(headR*0.3, headR*1.1, r); cm=(0.3+0.35*clamp(pn,0.0,1.0))*m*c.a; o.gloss=max(o.gloss,0.35*dome); }
   else if(vis==9||vis==10){
     float m=0.0;
     if(vis==9) m=1.0-smoothstep(headR*0.4, headR, r);
@@ -2863,6 +2942,8 @@ void lesion(int i, vec2 X, bool full, inout LO o){
   if(openR>0.0 && vis!=0 && vis!=3 && vis!=5 && vis!=4){ float hole=1.0-smoothstep(openR*0.5, openR*1.1, r); cc=mix(cc, vec3(0.32,0.06,0.04), hole*0.7); cm=max(cm, hole*0.85); o.wet=max(o.wet,hole); }
   if(crater>0.0){ float cr=exp(-r*r/(R*R*0.18)); o.hem += crater*cr*1.5; o.wet=max(o.wet,cr*0.6); if(vis==9||vis==10){ cc=mix(cc,vec3(0.62,0.6,0.46),cr); cm=max(cm,cr*0.8);} }
   if(hema>0.0){ o.deox += hema*4.0*dome; }
+  // cysts under pressure: the punctum gapes and white keratin peeks out
+  if(vis>=15 && vis<=17 && punct>0.0){ float pk=(1.0-smoothstep(punct*0.35, punct*1.1, r))*smoothstep(0.35,1.0,pn); cc=mix(cc, vec3(0.93,0.9,0.8), pk); cm=max(cm, pk*0.9); }
   float scab=f.z; if(scab>0.0){ float sm=1.0-smoothstep(R*0.25,R*0.55,r+0.08*vnoise(q*9.0)); cc=mix(cc, vec3(0.28,0.1,0.05), sm*scab); cm=max(cm, sm*scab*0.95); }
   if(cm>o.cMix){ o.cCol=cc; } o.cMix=max(o.cMix,cm);
 }
@@ -2887,7 +2968,7 @@ void main(){
     hx += t1.h; hy += t2.h; }
   vec2 gL = vec2(hx-lo.h, hy-lo.h)/e;
   // ---- wounds
-  float wd=0.0; float inW=0.0; float lip=0.0; float coreIn=0.0;
+  float wd=0.0; float inW=0.0; float lip=0.0; float coreIn=0.0; vec4 wLay=vec4(0.0);
   for(int i=0;i<uNCut;i++){ vec4 a=uCut0[i], b=uCut1[i];
     vec2 ab=a.zw-a.xy; float L=length(ab); if(L<1e-3) continue; vec2 t=ab/L, n=vec2(-t.y,t.x);
     vec2 dd=p-a.xy; float s=dot(dd,t)-L*0.5, hh=dot(dd,n); float hl=L*0.5;
@@ -2895,7 +2976,7 @@ void main(){
     float gv = max(g, 0.02 + 0.01*b.x);
     float inside = (1.0-smoothstep(gv*0.85, gv*1.05+0.012, abs(hh)))*(1.0-smoothstep(hl*0.97,hl+0.03,abs(s)));
     float prof = sqrt(max(0.0,1.0-pow(abs(hh)/max(gv,1e-3),2.0)))*sqrt(max(0.0,1.0-pow(abs(s)/hl,2.0)));
-    if(inside>inW){ inW=inside; wd=b.x*prof; }
+    if(inside>inW){ inW=inside; wd=b.x*prof; wLay=uCut2[i]; }
     lip = max(lip, exp(-pow((abs(hh)-gv)/0.06,2.0))*(1.0-smoothstep(hl*0.9,hl+0.1,abs(s))));
   }
   vec2 tl;
@@ -2937,10 +3018,12 @@ void main(){
   vec3 N = normalize(vec3(-grad, 1.0));
   // ---- chromophores -> albedo
   vec3 cn = (ch.rgb-0.5)*6.0;
-  vec4 ph0 = texture(uPhys, patchUv(p));
-  vec4 film = texture(uFilm, patchUv(p));
-  vec4 mk = texture(uMarks, patchUv(p));
-  float heat = texture(uHeat, patchUv(p)).r;
+  vec2 pu0 = patchUv(p);
+  float inPatch = smoothstep(0.0, 0.006, min(min(pu0.x, pu0.y), min(1.0 - pu0.x, 1.0 - pu0.y)));
+  vec4 ph0 = mix(vec4(1.0, 0.0, 0.0, 0.0), texture(uPhys, pu0), inPatch);
+  vec4 film = texture(uFilm, pu0) * inPatch;
+  vec4 mk = texture(uMarks, pu0) * inPatch;
+  float heat = mix(0.1667, texture(uHeat, pu0).r, inPatch);
   float m = uTone.x + uToneA.x*cn.x + uTone.x*0.10*(fbm(X*0.045)-0.5);
   float perf = ph0.r;
   float hem = (uTone.y + uToneA.y*cn.y + uRedBase + 0.06*(fbm(X*0.07+7.0)-0.5)) * mix(0.42, 1.0, clamp(perf,0.0,1.6)) + 0.22*max(0.0,perf-1.0);
@@ -2967,6 +3050,15 @@ void main(){
   // wound walls: epidermis edge, pink-white dermis, yellow fat below the dermis
   if(inW>0.0){
     vec3 wc = wd < uEpi*1.5 ? vec3(0.75,0.45,0.4) : wd < uDermis ? mix(vec3(0.86,0.6,0.58), vec3(0.93,0.78,0.74), wd/uDermis) : vec3(0.95,0.8,0.32);
+    // below the roof of what was cut: glistening white cyst wall over keratin, a yellow pus pocket, fat lobules
+    if(wLay.x>0.5 && wd > wLay.y){
+      float lay = smoothstep(wLay.y, wLay.y+0.15, wd);
+      vec3 lc = wLay.x<1.5 ? mix(vec3(0.95,0.93,0.88), vec3(0.9,0.85,0.7), smoothstep(wLay.y+0.2, wLay.y+0.6, wd)*wLay.z)
+              : wLay.x<2.5 ? mix(vec3(0.62,0.12,0.08), vec3(0.88,0.8,0.5), wLay.z)
+              : wLay.x<3.5 ? vec3(0.96,0.82,0.36)*(0.85+0.3*vnoise(p*5.0))
+              : vec3(0.97,0.96,0.92)*(0.88+0.2*hash12(floor(p*30.0)));
+      wc = mix(wc, lc, lay);
+    }
     wc = mix(wc, vec3(0.42,0.03,0.03), uBloodOn*clamp(0.55+0.4*(1.0-film.r*0.0),0.0,1.0)*smoothstep(0.1,0.6,wd));
     alb = mix(alb, wc, inW);
   }
@@ -3345,18 +3437,22 @@ PP.Renderer.prototype.uploadLesions = function () {
     const f = L.queue.length ? L.fill() : 1;
     const H = L.domeH();
     const plugExt = L.plug ? (L.plug.out ? 1 : L.plug.ext / L.plug.L) : (L.coreOut || (L.T.vis === 20 && L.done) ? 1 : 0);
-    const headR = T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45;
+    const pn0 = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
+    const headR = (T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45)
+      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
     let openVis = L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
-    if (T.open === 'open') openVis = L.open.r;
+    // squeezing pressure, normalised (~30 kPa = 1): heads swell, pores dilate, puncta gape
+    const pn = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
+    if (T.open === 'open') openVis = L.open.r * (1 + 0.3 * pn);
     const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' ? L.pusCol : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
     const vis = T.vis;
     const vals = [
       cx, cy, L.R, H,
       vis, L.inflam + L.deep * 0.4 + L.irrit * 0.5, headR, openVis,
       cc[0], cc[1], cc[2], L.type === 'furuncle' || L.type === 'carbuncle' ? 1 : f,
-      L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, L.punctum || 0,
+      L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, (L.punctum || 0) * (1 + 0.8 * pn),
       L.seed, L.pointing, L.hematoma, plugExt,
-      0, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
+      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
     ];
     d.set(vals, o);
   });
@@ -3417,14 +3513,18 @@ PP.Renderer.prototype.contactUniforms = function (prog, relaxing) {
 };
 PP.Renderer.prototype.woundUniforms = function (prog) {
   const gl = this.gl, Wd = this.W.wounds, clock = this.W.clock;
-  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
+  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), c2: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
   const nc = Math.min(16, Wd.cuts.length), oc = Wd.cuts.length - nc;
   for (let i = 0; i < nc; i++) {
     const c = Wd.cuts[oc + i], o = i * 4;
     B.c0[o] = c.ax; B.c0[o + 1] = c.ay; B.c0[o + 2] = c.bx; B.c0[o + 3] = c.by;
-    B.c1[o] = c.depth; B.c1[o + 1] = c.gape; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+    // a cut over a pressurised lesion is pushed open wider by the contents behind it
+    const Lc = c.L, gk = Lc && Lc.queue && Lc.queue.length && Lc.open.r > 0 ? 1 + 0.6 * PP.clamp(Lc.P / 20, 0, 1) * Lc.fill() : 1;
+    B.c1[o] = c.depth; B.c1[o + 1] = c.gape * gk; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = 0;
   }
   if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
+  if (prog.u.uCut2) gl.uniform4fv(prog.u.uCut2, B.c2);
   const nh = Math.min(8, Wd.holes.length), oh = Wd.holes.length - nh;
   for (let i = 0; i < nh; i++) {
     const h = Wd.holes[oh + i], o = i * 4;
@@ -3484,6 +3584,7 @@ PP.Renderer.prototype.timerEnd = function () {
    into a scaled sub-viewport (no reallocation hitches) and every screen-space read is scaled by uVS. */
 PP.Renderer.prototype.render = function (dt, fullRes) {
   const G = this.G, gl = this.gl, W = this.W, P = this.P;
+  dt = dt > 0 ? dt : 0;   // a frame timestamp can precede the loop's start: never step physiology backwards
   // pick a resolution step; change it at most every 1.5 s so targets are rarely reallocated
   const want = fullRes ? 1 : (this.dyn || 1) >= 0.9 ? 1 : (this.dyn || 1) >= 0.68 ? 0.75 : 0.55;
   const now = performance.now();
@@ -4750,12 +4851,11 @@ PP.World.prototype.newPatch = function (seed) {
   this.parts.clear(); this.wounds.reset(); this.decals.reset(); this.phys.clearGhosts();
   this.lesions = []; this.clock = 0; this.ctx.clock = 0;
   this.render.setupWorld();
-  this.cam.x = 0; this.cam.y = 0; this.cam.zoom = 1;
   this.lesions = this.genLesions(this.area, this.rng);
-  // centre the camera on something interesting
-  const focus = this.lesions.find((L) => L.type !== 'filament') || null;
-  if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
-  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  // a new patch keeps your view (zoom and position); only the centre is kept on the patch
+  const s = this.area.size / 2, C = this.cam;
+  C.x = PP.clamp(C.x, -s, s); C.y = PP.clamp(C.y, -s, s);
+  C.tx = C.x; C.ty = C.y; C.tz = C.zoom; C.vxp = C.vyp = 0;
   this.activeUntil = this.time + 1;
   this.fx.patchChanged();
 };
@@ -5106,7 +5206,7 @@ PP.UI.prototype.build = function () {
   $('zfit').addEventListener('click', () => {
     const B = PP.main.B;
     if (B && B.mode !== 'macro') { if (B.interactive()) { B.cam = B.copyCam(B.overview(W.areaId)); B.tgt = B.copyCam(B.cam); } return; }
-    W.cam.tz = this.zmin(); this.zoomBy(1);
+    W.cam.tz = this.zpatch(); this.zoomBy(1);
   });
   $('zbody').addEventListener('click', () => {
     const B = PP.main.B;
@@ -5166,7 +5266,7 @@ PP.UI.prototype.renderChart = function (rebuild) {
       const row = e.target.closest('.les'); if (!row) return;
       const L = row.dataset.fil ? fil[0] : W.lesions[+row.dataset.id];
       if (!L) return;
-      W.cam.tx = L.x; W.cam.ty = L.y; W.cam.tz = Math.max(W.cam.tz || W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4)); this.clampTarget();
+      W.cam.tx = L.x; W.cam.ty = L.y; this.clampTarget();
       this.sel = L;
     };
   }
@@ -5249,6 +5349,10 @@ PP.UI.prototype.update = function (dt) {
   const f = T.forceMax ? T.force / T.forceMax : 0;
   this.$('forcebar').firstChild.style.width = (PP.clamp(f, 0, 1) * 100).toFixed(0) + '%';
   this.$('painbar').firstChild.style.width = (PP.clamp(W.painLevel, 0, 1) * 100).toFixed(0) + '%';
+  // pop meter: how close the roof (good: pops out) or the wall (bad: bursts inward) is to giving way
+  { const La = W.activeLesion, rr = La ? La.rRoof || 0 : 0, rw = La ? La.rWall || 0 : 0, v = Math.max(rr, rw);
+    const pb = this.$('popbar'); pb.firstChild.style.width = (PP.clamp(v, 0, 1) * 100).toFixed(0) + '%';
+    pb.classList.toggle('deep', rw >= rr && v > 0.25); }
   const L = W.activeLesion;
   let ro = '';
   if (T.force > 0) ro += (T.id === 'vacuum' ? (T.vacLevels[T.vacLevel] * PP.clamp(f, 0, 1)).toFixed(0) + ' kPa' : T.force.toFixed(1) + ' N');
@@ -5312,7 +5416,7 @@ PP.UI.prototype.bindInput = function () {
     // and becomes a normal press if held still; blades, needles and injections always act
     if (e.button === 0 && this.ptrs.size === 1 && this.canPanFrom(p.x, p.y, T.id)) {
       const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
-      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure }); } }, 220);
+      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure, fit: true }); } }, 220);
       return;
     }
     if (this.ptrs.size === 2) {
@@ -5325,7 +5429,7 @@ PP.UI.prototype.bindInput = function () {
       else this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: W.cam.zoom, cx: W.cam.x, cy: W.cam.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       return;
     }
-    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 });
+    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
   });
   cv.addEventListener('pointermove', (e) => {
     if (body()) { body().move(e); return; }
@@ -5379,6 +5483,7 @@ PP.UI.prototype.bindInput = function () {
       // cursor: open hand over clear skin (drag to move), crosshair where the instrument would act
       const now = performance.now();
       if (now - (this._curT || 0) > 50) { this._curT = now; cv.classList.toggle('pannable', !this.placeType && !this.erasing && this.canPanFrom(p.x, p.y, T.id)); }
+      if (T.id === 'fingers' || T.id === 'swabs') W.activeUntil = Math.max(W.activeUntil || 0, W.time + 0.3);   // pad preview rings follow
     }
     else T.move(p.x, p.y, { pressure: e.pointerType === 'pen' ? e.pressure : null });
   });
@@ -5403,7 +5508,7 @@ PP.UI.prototype.bindInput = function () {
     if (body()) { body().wheel(e); return; }
     if (e.shiftKey) {
       const k = e.deltaY > 0 ? -1 : 1;
-      if (T.id === 'fingers' || T.id === 'swabs') T.spread[T.id] = PP.clamp(T.spread[T.id] + k * 0.3, 1.5, 12);
+      if (T.id === 'fingers' || T.id === 'swabs') T.nudge(T.id, k * 0.3);
       else if (T.id === 'loop') T.loopR = T.loopR > 1 ? 0.75 : 1.25;
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
       return;
@@ -5440,8 +5545,8 @@ PP.UI.prototype.bindInput = function () {
     const t = PP.TOOLS.find((x) => x.key === k);
     if (t) { T.select(t.id); return; }
     if (k === 'Q') T.angle += 0.2; else if (k === 'E') T.angle -= 0.2;
-    else if (k === '[') { if (T.spread[T.id] != null) T.spread[T.id] = Math.max(1.5, T.spread[T.id] - 0.4); }
-    else if (k === ']') { if (T.spread[T.id] != null) T.spread[T.id] = Math.min(12, T.spread[T.id] + 0.4); }
+    else if (k === '[') T.nudge(T.id, -0.4);
+    else if (k === ']') T.nudge(T.id, 0.4);
     else if (e.key === '+' || e.key === '=') this.zoomBy(1.35);
     else if (e.key === '-' || e.key === '_') this.zoomBy(1 / 1.35);
     else if (k === 'X') this.setErase(!this.erasing);
@@ -5496,7 +5601,9 @@ PP.UI.prototype.bodyLabel = function (h) {
   el.hidden = false; this.canvas.classList.add('pointing');
 };
 // zoom far enough out to see the whole skin patch
-PP.UI.prototype.zmin = function () { return Math.min(0.6, this.W.area.view / this.W.area.size); };
+// the close-up zooms out to 3x the whole patch (the skin carries on past its edge) before the 3D view takes over
+PP.UI.prototype.zmin = function () { return this.W.area.view / (3 * this.W.area.size); };
+PP.UI.prototype.zpatch = function () { return this.W.area.view / this.W.area.size; };
 PP.UI.prototype.setErase = function (on) {
   this.erasing = !!on;
   if (on) { this.placeType = null; this.$('addsel').value = ''; this.canvas.classList.remove('placing'); }
@@ -5893,8 +6000,13 @@ PP.Tests.prototype.all = async function () {
   //     close-up under the cursor at the same scale
   {
     const B = PP.main.B; await B.load();
-    await this.setup('cheek', [], { zoom: 0.375 }); W.ensureAreas();
+    await this.setup('cheek', [], { zoom: 0.125 }); W.ensureAreas();
     const C = W.cam; C.tz = C.zoom; C.tx = C.x; C.ty = C.y;
+    // scrolling out from the whole patch stays in the close-up (no switch until 3x the patch)
+    const C0 = { zoom: C.zoom }; C.zoom = C.tz = PP.main.UI.zpatch();
+    { const r0 = document.getElementById('gl').getBoundingClientRect(); document.getElementById('gl').dispatchEvent(new WheelEvent('wheel', { deltaY: 100, clientX: r0.left + r0.width / 2, clientY: r0.top + r0.height / 2, bubbles: true, cancelable: true })); }
+    const staysClose = B.mode === 'macro' && C.tz < PP.main.UI.zpatch() && C.tz > PP.main.UI.zmin();
+    C.zoom = C.tz = C0.zoom;
     const cv = document.getElementById('gl'), r = cv.getBoundingClientRect();
     const wheel = (x, y, dy) => cv.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: x, clientY: y, bubbles: true, cancelable: true }));
     const settle = (sec) => { for (let i = 0; i < sec * 30; i++) B.update(1 / 30); };
@@ -5902,7 +6014,7 @@ PP.Tests.prototype.all = async function () {
     wheel(r.left + r.width * 0.6, r.top + r.height * 0.4, 100);
     const w1 = B.widthAt(B.tgt.dist), m1 = B.mode;
     settle(3); const w2 = B.widthAt(B.cam.dist), m2 = B.mode;
-    const outOk = (m1 === 'entering') && Math.abs(w1 / vw0 - Math.exp(0.18)) < 0.03 && Math.abs(w2 / w1 - 1) < 0.02 && m2 === 'body';
+    const outOk = staysClose && (m1 === 'entering') && Math.abs(w1 / vw0 - Math.exp(0.18)) < 0.03 && Math.abs(w2 / w1 - 1) < 0.02 && m2 === 'body';
     // click on the face: nothing happens
     B.matrices();
     const proj = (q) => { const m = B.VP, x = m[0] * q[0] + m[4] * q[1] + m[8] * q[2] + m[12], y = m[1] * q[0] + m[5] * q[1] + m[9] * q[2] + m[13], w = m[3] * q[0] + m[7] * q[1] + m[11] * q[2] + m[15]; return [r.left + (x / w * 0.5 + 0.5) * r.width, r.top + (0.5 - y / w * 0.5) * r.height]; };
@@ -5924,6 +6036,72 @@ PP.Tests.prototype.all = async function () {
     this.ok('zoom_only_when_you_zoom', outOk && clickOk && inOk, { m1, w1: +w1.toFixed(1), vw0: +vw0.toFixed(1), w2: +w2.toFixed(1), m2, clickOk, area: PP.AREAS[W.areaId].name, steps, vwIn: +vwIn.toFixed(1), wLast: +wLast.toFixed(1), under: [+under.x.toFixed(2), +under.y.toFixed(2)], want: [+want[0].toFixed(2), +want[1].toFixed(2)], vwAfter: +W.cam.vw.toFixed(1) });
   }
 
+  // 20. nothing changes zoom unless you do: a new patch and a chart click keep your zoom; switching area keeps the scale
+  {
+    await this.setup('cheek', [['pustule', 3, 2, 3]], { zoom: 2.2 }); W.cam.tz = W.cam.zoom;
+    W.newPatch(4242); const zNew = W.cam.zoom;
+    W.addLesion('pustule', 5, 5, 3); PP.main.UI.renderChart(true);
+    const row = document.querySelector('#leslist .les'); if (row) row.click();
+    const zChart = W.cam.tz;
+    const vw0 = W.cam.vw; await PP.main.switchArea('nose'); const vwNose = W.area.view / W.cam.zoom;
+    await PP.main.switchArea('cheek');
+    this.ok('no_unrequested_zoom', Math.abs(zNew - 2.2) < 1e-6 && Math.abs(zChart - 2.2) < 1e-6 && Math.abs(vwNose / vw0 - 1) < 0.02,
+      { zNew, zChart, vw0: +vw0.toFixed(2), vwNose: +vwNose.toFixed(2) });
+  }
+
+  // 21. squeezes fit the lesion: pads land just outside its edge; [ ] nudges persist on top of the fit
+  {
+    const fitOn = async (area, type, d, tool) => {
+      const [Lf] = await this.setup(area, [[type, 0, 0, d]]); T.select(tool); T.fitOff[tool] = 0;
+      T.down(0.3, 0.2, { fit: true }); const s1 = T.spread[tool], dx = T.fitDX; T.up(); this.step(0.02); return { s: s1, R: Lf.R, dx };
+    };
+    const bh = await fitOn('nose', 'blackhead', 1.2, 'fingers'), bhs = await fitOn('nose', 'blackhead', 1.2, 'swabs');
+    const pu = await fitOn('cheek', 'pustule', 3, 'fingers'), cy = await fitOn('back', 'epidermoid', 20, 'fingers');
+    T.select('fingers'); T.nudge('fingers', 0.8); const pu2 = await fitOn('cheek', 'pustule', 3, 'fingers').catch(() => null);
+    T.fitOff.fingers = 0;
+    this.ok('squeeze_autofit', Math.abs(bh.s - (bh.R + 3.51)) < 0.05 && Math.abs(bhs.s - (bhs.R + 1.9)) < 0.05 && Math.abs(pu.s - (pu.R + 3.51)) < 0.05 && cy.s > 12 && Math.abs(bh.dx + 0.3) < 1e-6,
+      { blackheadFingers: +bh.s.toFixed(2), blackheadBuds: +bhs.s.toFixed(2), pustule: +pu.s.toFixed(2), cyst: +cy.s.toFixed(2), centred: Math.abs(bh.dx + 0.3) < 1e-6 });
+    void pu2;
+  }
+  // 22. effort and outcome scale with depth and size: a deep cyst gets far less of the pad pressure than a
+  //     superficial pustule at the same force (it needs more force), and a bigger pustule takes longer to empty.
+  //     (A bigger superficial pustule pops *more* easily: thin roof, larger radius, higher wall stress - Laplace.)
+  //     The pop meter climbs to 1 on the roof before a pop and shows the wall winning on a closed solid nodule.
+  {
+    const perN = async (area, type, d) => {
+      const [Lq] = await this.setup(area, [[type, 0, 0, d]]); T.select('fingers'); T.fitOff.fingers = 0;
+      T.down(0, 0, { fit: true }); this.step(0.5); const r = Lq.P / Math.max(T.force, 1e-3); T.up(); this.step(0.02); return r;
+    };
+    const pPus = await perN('cheek', 'pustule', 3), pCyst = await perN('back', 'epidermoid', 16);
+    const empty = async (d) => {
+      const [Lp] = await this.setup('cheek', [['pustule', 0, 0, d]]); T.select('fingers'); T.fitOff.fingers = 0;
+      T.down(0, 0, { fit: true }); let t = 0, mr = 0, tPop = null;
+      for (let i = 0; i < 120 * 20; i++) { W.step(this.dt); t += this.dt; if (tPop == null) mr = Math.max(mr, Lp.rRoof || 0); if (tPop == null && Lp.events.includes('pop')) tPop = t; if (tPop != null && Lp.fill() < 0.2) break; }
+      T.up(); this.step(0.02); return { t: t - (tPop || t), mr, V: Lp.V0 };   // emptying time once open
+    };
+    const small = await empty(2.0), big = await empty(4.2);
+    const [N] = await this.setup('cheek', [['nodule', 0, 0, 6]]); T.select('fingers'); T.down(0, 0, { fit: true });
+    let wallLead = false; for (let i = 0; i < 120 * 3; i++) { W.step(this.dt); if ((N.rWall || 0) >= (N.rRoof || 0) && (N.rWall || 0) > 0.25) wallLead = true; } T.up(); this.step(0.02);
+    this.ok('effort_and_pop_meter', pCyst < pPus * 0.6 && big.t > small.t && big.V > small.V * 5 && small.mr > 0.8 && wallLead,
+      { kPaPerN: { pustule: +pPus.toFixed(2), cyst: +pCyst.toFixed(2) }, emptySecAfterPop: { small: +small.t.toFixed(2), big: +big.t.toFixed(2) }, meter: +small.mr.toFixed(2), wallLead });
+  }
+  // 23. blades meet lesions differently: an incision into a pressurised lesion gushes; a solid papule only bleeds
+  //     (and, inflamed, bleeds more); a cyst slit exposes its wall; #11 stabs short, #15 follows the stroke
+  {
+    let [G] = await this.setup('cheek', [['giant', 0, 0, 6.5]]);
+    this.hold('fingers', 0, 0, 0.3, { spread: 7, keep: true });
+    const ext0 = G.ext; this.drag('blade11', 0, -0.6, 0, 0.8, 0.15); T.select('fingers'); this.step(0.02);
+    const gush = G.events.includes('gush') && G.ext > ext0;
+    T.up && T.up();
+    const [Pp] = await this.setup('cheek', [['papule', 0, 0, 4]]); this.drag('blade15', -3, 0, 3, 0, 0.3);
+    const cP = W.wounds.cuts[0], solidOk = !!Pp._solidCut && cP && cP.inflam > 0.3;
+    const [E] = await this.setup('back', [['epidermoid', 0, 0, 16]]); this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5);
+    const cE = W.wounds.cuts[W.wounds.cuts.length - 1], cystOk = cE && cE.layer === 1 && cE.L === E;
+    await this.setup('cheek', []); this.drag('blade11', -4, 0, 4, 0, 0.3); const l11 = W.wounds.cuts[0] ? W.wounds.cuts[0].len : 0;
+    await this.setup('cheek', []); this.drag('blade15', -4, 0, 4, 0, 0.3); const l15 = W.wounds.cuts[0] ? W.wounds.cuts[0].len : 0;
+    this.ok('blade_reactions', gush && solidOk && cystOk && l11 <= 3.01 && l15 > 7, { gush, events: G.events, solidOk, inflam: cP && +cP.inflam.toFixed(2), cystOk, len11: +l11.toFixed(2), len15: +l15.toFixed(2) });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -5934,7 +6112,7 @@ PP.Tests.prototype.visual = async function (name) {
   const W = this.W, T = W.tools;
   const tone = PP.params.get('tone');
   if (tone != null) await PP.main.switchTone(+tone);
-  if (name === 'idle') { await this.setup(PP.params.get('area') || 'cheek', []); W.newPatch(+(PP.params.get('seed') || 7)); W.cam.zoom = +(PP.params.get('zoom') || 1); }
+  if (name === 'idle') { await this.setup(PP.params.get('area') || 'cheek', []); W.cam.zoom = +(PP.params.get('zoom') || 1); W.newPatch(+(PP.params.get('seed') || 7)); }
   else if (name === 'skin') { await this.setup(PP.params.get('area') || 'cheek', [], { zoom: +(PP.params.get('zoom') || 2) }); }
   else if (name === 'lesions') {
     const types = Object.keys(PP.LTYPES).filter((t) => PP.LTYPES[t].d[1] < 10);
@@ -5949,7 +6127,8 @@ PP.Tests.prototype.visual = async function (name) {
   } else if (name === 'squeeze') {
     const ar = PP.params.get('area') || 'cheek';
     await this.setup(ar, [[PP.params.get('les') || 'pustule', 0, 0, +(PP.params.get('d') || 3.4)]], { zoom: +(PP.params.get('zoom') || 2.4) });
-    this.hold('fingers', 0, 0, +(PP.params.get('t') || 0.5), { spread: +(PP.params.get('spread') || 5.2), keep: true });
+    if (PP.params.get('fit')) { T.select(PP.params.get('tool') || 'fingers'); T.down(0, 0, { fit: true }); this.step(+(PP.params.get('t') || 0.5)); }
+    else this.hold('fingers', 0, 0, +(PP.params.get('t') || 0.5), { spread: +(PP.params.get('spread') || 5.2), keep: true });
     if (PP.params.get('rel') != null) { W.tools.up(); this.step(+PP.params.get('rel')); }
   } else if (name === 'blackhead') {
     await this.setup('nose', [['blackhead', 0, 0, 1.6], ['blackhead', 3, 2, 1.2], ['filament', -3, 1, 0.5], ['filament', -2, -2, 0.5], ['dpow', 4, -3, 3]], { zoom: 2.2 });
@@ -5998,9 +6177,15 @@ PP.Tests.prototype.visual = async function (name) {
     const h = B.raycast(o, d), f = h && B.spotFor(h), id = f && B.makeSpot(f);
     if (id) {
       await PP.main.switchArea(id);
-      const C = W.cam; C.zoom = C.tz = +(PP.params.get('zoom') || PP.main.UI.zmin()); C.x = C.y = C.tx = C.ty = 0;
+      const C = W.cam; C.zoom = C.tz = +(PP.params.get('zoom') || PP.main.UI.zpatch()); C.x = C.y = C.tx = C.ty = 0;
       PP.diag.write('SPOT ' + W.area.name + ' size ' + W.area.size + ' lesions ' + W.lesions.length + ' ' + W.lesions.map((L) => L.type).join(','));
     } else PP.diag.write('SPOT none ' + JSON.stringify(f && f.bad));
+  } else if (name === 'cutcyst') {
+    await this.setup(PP.params.get('area') || 'back', [[PP.params.get('les') || 'epidermoid', 0, 0, +(PP.params.get('d') || 16)]], { zoom: +(PP.params.get('zoom') || 1.4) });
+    const bl = PP.params.get('blade') || 'blade15';
+    if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
+    else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
+    if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];
@@ -6026,9 +6211,13 @@ PP.main = {
     if (id === W.areaId && W.lesions) { if (this.UI) this.UI.$('area').value = id; return; }
     W.switching = true;
     W.tools.up(); W.tools.ptr.down = false;
+    const keepVw = W.area.view / (W.cam.zoom || 1);
     W.ensureAreas(); W.stashArea();
     W.setArea(id); W.setTone(W.toneIdx);
-    try { await this.loadSets(); } finally { W.restoreArea(); W.switching = false; }
+    try { await this.loadSets(); } finally {
+      W.restoreArea(); W.switching = false;
+      if (this.UI) { const z = PP.clamp(W.area.view / keepVw, this.UI.zmin(), PP.UI.ZMAX); W.cam.zoom = W.cam.tz = z; W.cam.vw = W.area.view / z; }
+    }
     if (this.UI) { this.UI.$('area').value = id; this.UI.renderTray(); this.UI.sel = null; }
   },
   async switchTone(i) {
@@ -6117,7 +6306,7 @@ PP.main = {
   // full-resolution frame a few times a second (slow changes like redness fading) and re-present it otherwise.
   let goodN = 0, idleT = 9, lastFull = 0, pc = { x: NaN, y: NaN, z: NaN, w: 0, h: 0 };
   function frame(now) {
-    const fdt = Math.min(0.05, (now - last) / 1000);
+    const fdt = PP.clamp((now - last) / 1000, 0, 0.05);   // rAF's first timestamp can be earlier than 'last'
     last = now;
     PP.main.fps = PP.lerp(PP.main.fps || 60, 1 / Math.max(fdt, 1e-3), 0.05);
     if (!frozen) {

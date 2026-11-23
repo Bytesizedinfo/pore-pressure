@@ -290,8 +290,13 @@ PP.Tests.prototype.all = async function () {
   //     close-up under the cursor at the same scale
   {
     const B = PP.main.B; await B.load();
-    await this.setup('cheek', [], { zoom: 0.375 }); W.ensureAreas();
+    await this.setup('cheek', [], { zoom: 0.125 }); W.ensureAreas();
     const C = W.cam; C.tz = C.zoom; C.tx = C.x; C.ty = C.y;
+    // scrolling out from the whole patch stays in the close-up (no switch until 3x the patch)
+    const C0 = { zoom: C.zoom }; C.zoom = C.tz = PP.main.UI.zpatch();
+    { const r0 = document.getElementById('gl').getBoundingClientRect(); document.getElementById('gl').dispatchEvent(new WheelEvent('wheel', { deltaY: 100, clientX: r0.left + r0.width / 2, clientY: r0.top + r0.height / 2, bubbles: true, cancelable: true })); }
+    const staysClose = B.mode === 'macro' && C.tz < PP.main.UI.zpatch() && C.tz > PP.main.UI.zmin();
+    C.zoom = C.tz = C0.zoom;
     const cv = document.getElementById('gl'), r = cv.getBoundingClientRect();
     const wheel = (x, y, dy) => cv.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, clientX: x, clientY: y, bubbles: true, cancelable: true }));
     const settle = (sec) => { for (let i = 0; i < sec * 30; i++) B.update(1 / 30); };
@@ -299,7 +304,7 @@ PP.Tests.prototype.all = async function () {
     wheel(r.left + r.width * 0.6, r.top + r.height * 0.4, 100);
     const w1 = B.widthAt(B.tgt.dist), m1 = B.mode;
     settle(3); const w2 = B.widthAt(B.cam.dist), m2 = B.mode;
-    const outOk = (m1 === 'entering') && Math.abs(w1 / vw0 - Math.exp(0.18)) < 0.03 && Math.abs(w2 / w1 - 1) < 0.02 && m2 === 'body';
+    const outOk = staysClose && (m1 === 'entering') && Math.abs(w1 / vw0 - Math.exp(0.18)) < 0.03 && Math.abs(w2 / w1 - 1) < 0.02 && m2 === 'body';
     // click on the face: nothing happens
     B.matrices();
     const proj = (q) => { const m = B.VP, x = m[0] * q[0] + m[4] * q[1] + m[8] * q[2] + m[12], y = m[1] * q[0] + m[5] * q[1] + m[9] * q[2] + m[13], w = m[3] * q[0] + m[7] * q[1] + m[11] * q[2] + m[15]; return [r.left + (x / w * 0.5 + 0.5) * r.width, r.top + (0.5 - y / w * 0.5) * r.height]; };
@@ -321,6 +326,72 @@ PP.Tests.prototype.all = async function () {
     this.ok('zoom_only_when_you_zoom', outOk && clickOk && inOk, { m1, w1: +w1.toFixed(1), vw0: +vw0.toFixed(1), w2: +w2.toFixed(1), m2, clickOk, area: PP.AREAS[W.areaId].name, steps, vwIn: +vwIn.toFixed(1), wLast: +wLast.toFixed(1), under: [+under.x.toFixed(2), +under.y.toFixed(2)], want: [+want[0].toFixed(2), +want[1].toFixed(2)], vwAfter: +W.cam.vw.toFixed(1) });
   }
 
+  // 20. nothing changes zoom unless you do: a new patch and a chart click keep your zoom; switching area keeps the scale
+  {
+    await this.setup('cheek', [['pustule', 3, 2, 3]], { zoom: 2.2 }); W.cam.tz = W.cam.zoom;
+    W.newPatch(4242); const zNew = W.cam.zoom;
+    W.addLesion('pustule', 5, 5, 3); PP.main.UI.renderChart(true);
+    const row = document.querySelector('#leslist .les'); if (row) row.click();
+    const zChart = W.cam.tz;
+    const vw0 = W.cam.vw; await PP.main.switchArea('nose'); const vwNose = W.area.view / W.cam.zoom;
+    await PP.main.switchArea('cheek');
+    this.ok('no_unrequested_zoom', Math.abs(zNew - 2.2) < 1e-6 && Math.abs(zChart - 2.2) < 1e-6 && Math.abs(vwNose / vw0 - 1) < 0.02,
+      { zNew, zChart, vw0: +vw0.toFixed(2), vwNose: +vwNose.toFixed(2) });
+  }
+
+  // 21. squeezes fit the lesion: pads land just outside its edge; [ ] nudges persist on top of the fit
+  {
+    const fitOn = async (area, type, d, tool) => {
+      const [Lf] = await this.setup(area, [[type, 0, 0, d]]); T.select(tool); T.fitOff[tool] = 0;
+      T.down(0.3, 0.2, { fit: true }); const s1 = T.spread[tool], dx = T.fitDX; T.up(); this.step(0.02); return { s: s1, R: Lf.R, dx };
+    };
+    const bh = await fitOn('nose', 'blackhead', 1.2, 'fingers'), bhs = await fitOn('nose', 'blackhead', 1.2, 'swabs');
+    const pu = await fitOn('cheek', 'pustule', 3, 'fingers'), cy = await fitOn('back', 'epidermoid', 20, 'fingers');
+    T.select('fingers'); T.nudge('fingers', 0.8); const pu2 = await fitOn('cheek', 'pustule', 3, 'fingers').catch(() => null);
+    T.fitOff.fingers = 0;
+    this.ok('squeeze_autofit', Math.abs(bh.s - (bh.R + 3.51)) < 0.05 && Math.abs(bhs.s - (bhs.R + 1.9)) < 0.05 && Math.abs(pu.s - (pu.R + 3.51)) < 0.05 && cy.s > 12 && Math.abs(bh.dx + 0.3) < 1e-6,
+      { blackheadFingers: +bh.s.toFixed(2), blackheadBuds: +bhs.s.toFixed(2), pustule: +pu.s.toFixed(2), cyst: +cy.s.toFixed(2), centred: Math.abs(bh.dx + 0.3) < 1e-6 });
+    void pu2;
+  }
+  // 22. effort and outcome scale with depth and size: a deep cyst gets far less of the pad pressure than a
+  //     superficial pustule at the same force (it needs more force), and a bigger pustule takes longer to empty.
+  //     (A bigger superficial pustule pops *more* easily: thin roof, larger radius, higher wall stress - Laplace.)
+  //     The pop meter climbs to 1 on the roof before a pop and shows the wall winning on a closed solid nodule.
+  {
+    const perN = async (area, type, d) => {
+      const [Lq] = await this.setup(area, [[type, 0, 0, d]]); T.select('fingers'); T.fitOff.fingers = 0;
+      T.down(0, 0, { fit: true }); this.step(0.5); const r = Lq.P / Math.max(T.force, 1e-3); T.up(); this.step(0.02); return r;
+    };
+    const pPus = await perN('cheek', 'pustule', 3), pCyst = await perN('back', 'epidermoid', 16);
+    const empty = async (d) => {
+      const [Lp] = await this.setup('cheek', [['pustule', 0, 0, d]]); T.select('fingers'); T.fitOff.fingers = 0;
+      T.down(0, 0, { fit: true }); let t = 0, mr = 0, tPop = null;
+      for (let i = 0; i < 120 * 20; i++) { W.step(this.dt); t += this.dt; if (tPop == null) mr = Math.max(mr, Lp.rRoof || 0); if (tPop == null && Lp.events.includes('pop')) tPop = t; if (tPop != null && Lp.fill() < 0.2) break; }
+      T.up(); this.step(0.02); return { t: t - (tPop || t), mr, V: Lp.V0 };   // emptying time once open
+    };
+    const small = await empty(2.0), big = await empty(4.2);
+    const [N] = await this.setup('cheek', [['nodule', 0, 0, 6]]); T.select('fingers'); T.down(0, 0, { fit: true });
+    let wallLead = false; for (let i = 0; i < 120 * 3; i++) { W.step(this.dt); if ((N.rWall || 0) >= (N.rRoof || 0) && (N.rWall || 0) > 0.25) wallLead = true; } T.up(); this.step(0.02);
+    this.ok('effort_and_pop_meter', pCyst < pPus * 0.6 && big.t > small.t && big.V > small.V * 5 && small.mr > 0.8 && wallLead,
+      { kPaPerN: { pustule: +pPus.toFixed(2), cyst: +pCyst.toFixed(2) }, emptySecAfterPop: { small: +small.t.toFixed(2), big: +big.t.toFixed(2) }, meter: +small.mr.toFixed(2), wallLead });
+  }
+  // 23. blades meet lesions differently: an incision into a pressurised lesion gushes; a solid papule only bleeds
+  //     (and, inflamed, bleeds more); a cyst slit exposes its wall; #11 stabs short, #15 follows the stroke
+  {
+    let [G] = await this.setup('cheek', [['giant', 0, 0, 6.5]]);
+    this.hold('fingers', 0, 0, 0.3, { spread: 7, keep: true });
+    const ext0 = G.ext; this.drag('blade11', 0, -0.6, 0, 0.8, 0.15); T.select('fingers'); this.step(0.02);
+    const gush = G.events.includes('gush') && G.ext > ext0;
+    T.up && T.up();
+    const [Pp] = await this.setup('cheek', [['papule', 0, 0, 4]]); this.drag('blade15', -3, 0, 3, 0, 0.3);
+    const cP = W.wounds.cuts[0], solidOk = !!Pp._solidCut && cP && cP.inflam > 0.3;
+    const [E] = await this.setup('back', [['epidermoid', 0, 0, 16]]); this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5);
+    const cE = W.wounds.cuts[W.wounds.cuts.length - 1], cystOk = cE && cE.layer === 1 && cE.L === E;
+    await this.setup('cheek', []); this.drag('blade11', -4, 0, 4, 0, 0.3); const l11 = W.wounds.cuts[0] ? W.wounds.cuts[0].len : 0;
+    await this.setup('cheek', []); this.drag('blade15', -4, 0, 4, 0, 0.3); const l15 = W.wounds.cuts[0] ? W.wounds.cuts[0].len : 0;
+    this.ok('blade_reactions', gush && solidOk && cystOk && l11 <= 3.01 && l15 > 7, { gush, events: G.events, solidOk, inflam: cP && +cP.inflam.toFixed(2), cystOk, len11: +l11.toFixed(2), len15: +l15.toFixed(2) });
+  }
+
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
   document.title = 'TESTS ' + passed + '/' + this.results.length;
@@ -331,7 +402,7 @@ PP.Tests.prototype.visual = async function (name) {
   const W = this.W, T = W.tools;
   const tone = PP.params.get('tone');
   if (tone != null) await PP.main.switchTone(+tone);
-  if (name === 'idle') { await this.setup(PP.params.get('area') || 'cheek', []); W.newPatch(+(PP.params.get('seed') || 7)); W.cam.zoom = +(PP.params.get('zoom') || 1); }
+  if (name === 'idle') { await this.setup(PP.params.get('area') || 'cheek', []); W.cam.zoom = +(PP.params.get('zoom') || 1); W.newPatch(+(PP.params.get('seed') || 7)); }
   else if (name === 'skin') { await this.setup(PP.params.get('area') || 'cheek', [], { zoom: +(PP.params.get('zoom') || 2) }); }
   else if (name === 'lesions') {
     const types = Object.keys(PP.LTYPES).filter((t) => PP.LTYPES[t].d[1] < 10);
@@ -346,7 +417,8 @@ PP.Tests.prototype.visual = async function (name) {
   } else if (name === 'squeeze') {
     const ar = PP.params.get('area') || 'cheek';
     await this.setup(ar, [[PP.params.get('les') || 'pustule', 0, 0, +(PP.params.get('d') || 3.4)]], { zoom: +(PP.params.get('zoom') || 2.4) });
-    this.hold('fingers', 0, 0, +(PP.params.get('t') || 0.5), { spread: +(PP.params.get('spread') || 5.2), keep: true });
+    if (PP.params.get('fit')) { T.select(PP.params.get('tool') || 'fingers'); T.down(0, 0, { fit: true }); this.step(+(PP.params.get('t') || 0.5)); }
+    else this.hold('fingers', 0, 0, +(PP.params.get('t') || 0.5), { spread: +(PP.params.get('spread') || 5.2), keep: true });
     if (PP.params.get('rel') != null) { W.tools.up(); this.step(+PP.params.get('rel')); }
   } else if (name === 'blackhead') {
     await this.setup('nose', [['blackhead', 0, 0, 1.6], ['blackhead', 3, 2, 1.2], ['filament', -3, 1, 0.5], ['filament', -2, -2, 0.5], ['dpow', 4, -3, 3]], { zoom: 2.2 });
@@ -395,9 +467,15 @@ PP.Tests.prototype.visual = async function (name) {
     const h = B.raycast(o, d), f = h && B.spotFor(h), id = f && B.makeSpot(f);
     if (id) {
       await PP.main.switchArea(id);
-      const C = W.cam; C.zoom = C.tz = +(PP.params.get('zoom') || PP.main.UI.zmin()); C.x = C.y = C.tx = C.ty = 0;
+      const C = W.cam; C.zoom = C.tz = +(PP.params.get('zoom') || PP.main.UI.zpatch()); C.x = C.y = C.tx = C.ty = 0;
       PP.diag.write('SPOT ' + W.area.name + ' size ' + W.area.size + ' lesions ' + W.lesions.length + ' ' + W.lesions.map((L) => L.type).join(','));
     } else PP.diag.write('SPOT none ' + JSON.stringify(f && f.bad));
+  } else if (name === 'cutcyst') {
+    await this.setup(PP.params.get('area') || 'back', [[PP.params.get('les') || 'epidermoid', 0, 0, +(PP.params.get('d') || 16)]], { zoom: +(PP.params.get('zoom') || 1.4) });
+    const bl = PP.params.get('blade') || 'blade15';
+    if (bl === 'blade11') this.drag('blade11', 0, -1.2, 0, 1.3, 0.25);
+    else { this.drag('blade15', -6, 0, 6, 0, 0.5); this.drag('blade15', -6, 0, 6, 0, 0.5); }
+    if (PP.params.get('sq')) this.hold('fingers', 0, 0, +PP.params.get('sq'), { spread: 11, keep: true });
   } else if (name === 'tools') {
     await this.setup('cheek', [['pustule', 0, 0, 3]], { zoom: 1.0 });
     const ids = ['fingers', 'loop', 'vacuum', 'needle', 'blade11', 'punch', 'hemostat', 'gauze', 'compress'];

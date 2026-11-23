@@ -8,9 +8,13 @@ PP.main = {
     if (id === W.areaId && W.lesions) { if (this.UI) this.UI.$('area').value = id; return; }
     W.switching = true;
     W.tools.up(); W.tools.ptr.down = false;
+    const keepVw = W.area.view / (W.cam.zoom || 1);
     W.ensureAreas(); W.stashArea();
     W.setArea(id); W.setTone(W.toneIdx);
-    try { await this.loadSets(); } finally { W.restoreArea(); W.switching = false; }
+    try { await this.loadSets(); } finally {
+      W.restoreArea(); W.switching = false;
+      if (this.UI) { const z = PP.clamp(W.area.view / keepVw, this.UI.zmin(), PP.UI.ZMAX); W.cam.zoom = W.cam.tz = z; W.cam.vw = W.area.view / z; }
+    }
     if (this.UI) { this.UI.$('area').value = id; this.UI.renderTray(); this.UI.sel = null; }
   },
   async switchTone(i) {
@@ -99,7 +103,7 @@ PP.main = {
   // full-resolution frame a few times a second (slow changes like redness fading) and re-present it otherwise.
   let goodN = 0, idleT = 9, lastFull = 0, pc = { x: NaN, y: NaN, z: NaN, w: 0, h: 0 };
   function frame(now) {
-    const fdt = Math.min(0.05, (now - last) / 1000);
+    const fdt = PP.clamp((now - last) / 1000, 0, 0.05);   // rAF's first timestamp can be earlier than 'last'
     last = now;
     PP.main.fps = PP.lerp(PP.main.fps || 60, 1 / Math.max(fdt, 1e-3), 0.05);
     if (!frozen) {

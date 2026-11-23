@@ -71,6 +71,15 @@ PP.AREAS = {
     rstl: 35, s1: 12, s2: 5, grav: [0, -0.9, -0.42], oil: 0.45, red: 0.05, hair: 0, mix: [] },
 };
 
+// How much each dome swells under squeezing pressure (fraction of its height at ~30 kPa): fluid-filled cysts are
+// fluctuant and bulge, pustule and whitehead domes rise, open pores stay flat (their plug rises instead), solid
+// papules, nodules and lobular lesions barely change.
+PP.BULGE = { pustule: 0.45, giant: 0.5, whitehead: 0.6, macrocomedone: 0.6, blackhead: 0, dpow: 0, trichostasis: 0, filament: 0,
+  milium: 0.3, furuncle: 0.5, carbuncle: 0.45, pseudocyst: 0.6, papule: 0.12, nodule: 0.1, sebhyper: 0.05, epidermoid: 0.9,
+  pilar: 0.7, steatocystoma: 0.85, lipoma: 0.08, ingrown: 0.4, molluscum: 0.3 };
+// what an incision exposes below the roof: 1 cyst wall + keratin, 2 pus pocket, 3 fat lobules, 4 chalk
+PP.CUTLAYER = { epidermoid: 1, pilar: 1, steatocystoma: 1, pustule: 2, giant: 2, furuncle: 2, carbuncle: 2, pseudocyst: 2, ingrown: 2, lipoma: 3 };
+
 /* Close-ups anywhere on the face/body: the region under the cursor picks a base area (skin mechanics, scan set,
    hair) and a blemish mix typical of that site. Comedones and milia favour the T-zone, temples and the ear's
    concha; ingrown hairs the beard area and neck; steatocystoma the chest; pilar cysts the scalp; boils and cysts
@@ -248,3 +257,5 @@ PP.CREDITS = [
   ['Studio lighting: Poly Haven "Monochrome Studio 04" HDRI (CC0).', 'https://polyhaven.com/a/monochrome_studio_04'],
   ['Face and upper body: MakeHuman base mesh (CC0 1.0), cropped to a bust, subdivided, ambient occlusion baked.', 'https://github.com/makehumancommunity/makehuman/blob/master/LICENSE.md'],
 ];
+// attach the per-type swelling once the lesion types exist
+for (const [k, v] of Object.entries(PP.BULGE)) if (PP.LTYPES[k]) PP.LTYPES[k].bulge = v;

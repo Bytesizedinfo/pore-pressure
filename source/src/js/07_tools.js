@@ -13,6 +13,7 @@ PP.Tools = function (W) {
   this.ptr = { down: false, x: 0, y: 0, x0: 0, y0: 0, t: 0, pressure: 0, moved: 0, shift: false, lx: 0, ly: 0, speed: 0 };
   this.touch = null;           // {a:{x,y}, b:{x,y}, d0}
   this.angle = 0; this.spread = { fingers: 4.6, swabs: 3.0 };
+  this.fitOff = { fingers: 0, swabs: 0 }; this.fitDX = 0; this.fitDY = 0;   // auto-fit: your nudge on top of the fit
   this.loopR = 1.25; this.vacLevel = 1; this.vacLevels = [40, 52, 65];
   this.force = 0; this.forceN = 0;
   this.prims = new Float32Array(16 * 160); this.nPrim = 0;
@@ -29,9 +30,27 @@ PP.Tools.prototype.select = function (id) {
   this.W.fx.toolChanged(id);
 };
 
+// fingers / cotton buds: the pads land just outside the edge of the blemish you press on (tight for a comedone,
+// wide for a cyst), centred on it; [ ] or Shift+scroll nudge the spacing from there
+PP.Tools.prototype.fitFor = function (x, y) {
+  const id = this.id; if (id !== 'fingers' && id !== 'swabs') return null;
+  const isF = id === 'fingers';
+  let best = null, bd = 1e9;
+  for (const L of this.W.lesions) { const d = Math.hypot(x - L.x - L.ox, y - L.y - L.oy) - L.R; if (d < bd) { bd = d; best = L; } }
+  if (!best || bd > (isF ? 5 : 3)) return null;
+  const base = best.R + (isF ? 0.55 * 4.2 + 1.2 : 0.55 * 2.0 + 0.8);
+  return { L: best, s: PP.clamp(base + this.fitOff[id], isF ? 2.2 : 1.5, 25), cx: best.x + best.ox, cy: best.y + best.oy };
+};
+PP.Tools.prototype.nudge = function (id, k) {
+  if (this.spread[id] == null) return;
+  this.fitOff[id] = PP.clamp(this.fitOff[id] + k, -10, 15);
+  this.spread[id] = PP.clamp(this.spread[id] + k, 1.5, 25);
+};
 PP.Tools.prototype.down = function (x, y, opt = {}) {
   const p = this.ptr;
-  Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0 });
+  Object.assign(p, { down: true, x, y, x0: x, y0: y, lx: x, ly: y, t: 0, moved: 0, shift: !!opt.shift, pressure: opt.pressure || 0, build: !!opt.fit });
+  this.fitDX = 0; this.fitDY = 0;
+  if (opt.fit) { const f = this.fitFor(x, y); if (f) { this.spread[this.id] = f.s; this.fitDX = f.cx - x; this.fitDY = f.cy - y; } }
   this.stroke++;
   const W = this.W;
   if (this.id === 'gauze' && opt.shift) { W.S.shield = !W.S.shield; W.fx.toast('', 'Splatter shield ' + (W.S.shield ? 'on' : 'off'), W.S.shield ? 'Gauze held loosely over the lesion catches spray (AAFP).' : ''); p.down = false; return; }
@@ -213,9 +232,24 @@ PP.Tools.prototype.update = function (dt) {
       F = PP.clamp((this.touch.d0 - d) * (isF ? 1.6 : 0.9) + 0.6, 0, isF ? 9 : 4);
     } else if (p.down) {
       const s = this.spread[id];
-      const ax = Math.cos(this.angle), ay = Math.sin(this.angle);
-      c1 = { x: p.x - ax * s, y: p.y - ay * s }; c2 = { x: p.x + ax * s, y: p.y + ay * s };
+      const ax = Math.cos(this.angle), ay = Math.sin(this.angle), mx = p.x + this.fitDX, my = p.y + this.fitDY;
+      c1 = { x: mx - ax * s, y: my - ay * s }; c2 = { x: mx + ax * s, y: my + ay * s };
       F = ramp(0.9, isF ? (p.shift ? 10 : 6) : 3);
+      // a real press keeps building slowly while held, so big or deep lesions simply take longer
+      if (p.build && !p.shift) F = Math.min(isF ? 10 : 4, F + Math.max(0, p.t - 1.2) * (isF ? 1.0 : 0.4));
+    } else if (!this.touch) {
+      // hovering near a blemish: faint rings where the pads would land
+      const f = this.fitFor(p.x, p.y);
+      if (f) {
+        const ax = Math.cos(this.angle), ay = Math.sin(this.angle), a = isF ? 3.9 : 2.0;
+        for (const sg of [-1, 1]) {
+          const cx = f.cx + ax * f.s * sg, cy = f.cy + ay * f.s * sg, z = W.skinH(cx, cy) + 0.1;
+          for (let k = 0; k < 10; k++) {
+            const a0 = (k / 10) * Math.PI * 2, a1 = ((k + 1) / 10) * Math.PI * 2;
+            this.prim([cx + Math.cos(a0) * a, cy + Math.sin(a0) * a, z, 0.05, cx + Math.cos(a1) * a, cy + Math.sin(a1) * a, z, 0.05], 1, PP.MATOBJ.nitrile, [0.55, 0.5, 0.95, 0]);
+          }
+        }
+      }
     }
     if (c1 && c2) {
       // soft pads: a thumb pad contacts ~51.6 mm^2 at 1.5 N and ~65.7 mm^2 at 5 N (area ~ F^0.19); cotton tips barely spread

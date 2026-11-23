@@ -8,11 +8,21 @@ A macro skin extraction simulator that runs in the browser (WebGL2).
 - **Wounds:** cuts gape and punch holes turn oval along the skin's tension lines.
 - **Your own blemishes:** use the **Add blemish** menu; **Erase** (or X) removes them.
 - **Moving around:** drag clear skin to move it. A drag that starts on a blemish uses your instrument, and blades cut wherever you drag. You can also use the **Move** tool (M), hold **Space**, or right-drag. Zoom with **− / + / Fit**, the scroll wheel or a pinch.
-- **Whole face and upper body:** scroll out past the whole patch and the same scroll carries on into a 3D bust, from the same spot and scale, with every area's blemishes on it. **Face** jumps straight there.
+- **Whole face and upper body:** the close-up zooms out to 3× the patch (the skin carries on past its edge). Scroll out further and the same scroll carries on into a 3D bust from the same spot and scale, with every area's blemishes on it. **Face** jumps straight there.
   - Zooming only ever follows your scroll or pinch, toward the cursor; nothing zooms or flies by itself.
   - Drag to move the bust; right-drag, Shift-drag, two fingers or the arrow keys turn it.
   - Zoom into any spot to hand over to a close-up right there: cheek, temple, ear, jaw, neck, chest, shoulder, scalp or upper back. Each gets blemishes typical of that site.
   - Every area and close-up keeps its state, so what you popped stays popped.
+- **Fitted to the lesion:** fingers and cotton buds land just outside the edge of the blemish you press on: tight for a blackhead, both thumbs well apart for a cyst. `[` / `]` or Shift+scroll nudge the spacing from there.
+- **Lesions respond by type:**
+  - Pressed, a pustule's head swells and whitens, a blackhead's plug rises from the pore, and a cyst bulges tight and its punctum gapes.
+  - Deep cysts get far less of your pressure than superficial pustules, so they take more force, and big ones take longer to empty.
+  - The **Pop** meter shows how close the roof is to popping outward (violet) or the wall to bursting inward (amber).
+- **Blades:**
+  - A #11 stabs short and deep; a #15 sweeps along your stroke.
+  - Cutting a pressurised lesion makes it gush along the cut, and the cut is pushed wider open.
+  - Solid papules only bleed, and inflamed tissue bleeds more.
+  - A cyst slit shows its white wall over keratin, a lipoma its fat, and a pus pocket its pus.
 - **Squeezing:** fingertip pads spread as you press harder, grip the skin and drag it inward. The skin between them bunches into a fold that pales on its crest. On release it springs back, about half at once and the rest over a few seconds, then the reactive redness follows.
 
 For entertainment and education only. Squeezing at home risks scarring and infection; see a dermatologist.

@@ -64,12 +64,11 @@ PP.World.prototype.newPatch = function (seed) {
   this.parts.clear(); this.wounds.reset(); this.decals.reset(); this.phys.clearGhosts();
   this.lesions = []; this.clock = 0; this.ctx.clock = 0;
   this.render.setupWorld();
-  this.cam.x = 0; this.cam.y = 0; this.cam.zoom = 1;
   this.lesions = this.genLesions(this.area, this.rng);
-  // centre the camera on something interesting
-  const focus = this.lesions.find((L) => L.type !== 'filament') || null;
-  if (focus) { this.cam.x = focus.x * 0.6; this.cam.y = focus.y * 0.6; }
-  this.cam.tx = this.cam.x; this.cam.ty = this.cam.y; this.cam.tz = this.cam.zoom; this.cam.vxp = this.cam.vyp = 0;
+  // a new patch keeps your view (zoom and position); only the centre is kept on the patch
+  const s = this.area.size / 2, C = this.cam;
+  C.x = PP.clamp(C.x, -s, s); C.y = PP.clamp(C.y, -s, s);
+  C.tx = C.x; C.ty = C.y; C.tz = C.zoom; C.vxp = C.vyp = 0;
   this.activeUntil = this.time + 1;
   this.fx.patchChanged();
 };

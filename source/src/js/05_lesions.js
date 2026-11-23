@@ -100,7 +100,7 @@ PP.Lesion.prototype.solid = function () { return this.T.open === 'none' && !this
 // current visible dome height (mm)
 PP.Lesion.prototype.domeH = function () {
   const f = this.queue.length ? this.fill() : 1;
-  const press = 1 + 0.5 * PP.clamp(this.P / 30, 0, 1) * f;
+  const press = 1 + (this.T.bulge != null ? this.T.bulge : 0.5) * PP.clamp(this.P / 30, 0, 1) * f;
   let h = this.H0 * press * (0.25 + 0.75 * f) * (1 + 0.35 * this.deep);
   if (this.type === 'dpow' || this.type === 'blackhead' || this.type === 'filament' || this.type === 'trichostasis') h = this.H0;
   if (this.steroidT >= 0) h *= PP.clamp(1 - this.steroidT / (2.5 * 86400), 0.15, 1);
@@ -156,6 +156,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
     const sRoof = T.roofS ? (Math.max(0, this.P - cover) * Rc) / (2 * tRoof) : 0;
     const sWall = (this.P * Math.max(this.rc, 0.2)) / (2 * this.wallT);
     const rRoof = T.roofS ? sRoof / this.roofS : 0, rWall = sWall / this.wallS;
+    this.rRoof = rRoof; this.rWall = rWall;   // for the pop meter: how close the roof / the wall is to giving way
     if (rWall > 1 && rWall >= rRoof && this.deep < 1) this.deepRupture(ctx, cover > this.P * 0.6 ? 'covered' : 'closed');
     else if (rRoof > 1) this.surfaceRupture(ctx, Rc);
     // punctum: thick keratin may squeeze through the tiny opening (DermNet) before the wall fails
@@ -165,6 +166,7 @@ PP.Lesion.prototype.update = function (dt, ctx) {
       if (Q > 0) this.emitFlow(ctx, Q, dt, this.punctum, true);
     }
   } else if (this.open.r > 0 && !this.done) {
+    this.rRoof = 0; this.rWall = 0;
     // with an opening: excess compression fragments a thin cyst wall (AAFP / StatPearls)
     if (this.sac && this.sac.integrity > 0.2) {
       const sWall = (this.P * Math.max(this.rc, 0.2)) / (2 * this.wallT);
@@ -201,6 +203,22 @@ PP.Lesion.prototype.surfaceRupture = function (ctx, Rc) {
     if (vol > 0) this.spray(ctx, vol, v, thin ? 0.55 : 0.25, c);
   }
   ctx.fx.toast('good', 'Pop', 'The roof gave way at the apex: the thin-shell stress in the roof exceeded its strength before the wall did.');
+};
+
+// a fresh incision into a pressurised lesion: the stored pressure drives contents out at once
+// (thin contents gush along the cut; thick ones bulge into it)
+PP.Lesion.prototype.incisionRelease = function (ctx, kind) {
+  const c = this.cur(); if (!c || c.vol <= 0 || this.T.mobile) return;
+  const intrinsic = this.type === 'giant' ? 5 : this.type === 'furuncle' || this.type === 'carbuncle' ? 3 : this.type === 'pseudocyst' ? 2 : 0;
+  const Pst = Math.max(this.P, intrinsic * this.fill());
+  if (Pst < 1.5 || (c.k !== 'liquid' && c.k !== 'paste')) return;
+  const thin = c.k === 'liquid' && (c.mu || 1) < 400;
+  const frac = PP.clamp(0.04 + Pst / 40, 0.04, thin ? 0.4 : 0.12);
+  const vol = Math.min(c.vol, this.V0 * frac * ctx.S.spurt);
+  if (vol <= 0) return;
+  this.spray(ctx, vol, PP.jetSpeed(Pst) * (thin ? 0.5 : 0.02) * ctx.S.spurt, thin ? 0.5 : 0.2, c);
+  this.events.push('gush');
+  ctx.fx.toast('', thin ? 'Gush' : 'Contents bulge', thin ? 'The incision released the stored pressure at once: contents gushed out along the cut.' : 'Thick contents bulged straight into the fresh incision.');
 };
 
 PP.Lesion.prototype.deepRupture = function (ctx, why) {

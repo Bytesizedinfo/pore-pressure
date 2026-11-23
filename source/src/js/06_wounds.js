@@ -47,6 +47,10 @@ PP.Wounds.prototype.openLesions = function (x, y, rOpen, depth, kind, len, cx, c
     if (L.T.mobile && len) L.open.r = Math.max(L.open.r, 0.6);
     if (prev <= 0 && L.open.r > 0) {
       L.state = L.state === 'intact' ? 'opened' : L.state; L.events.push('opened:' + kind);
+      // what the blade finds depends on the lesion
+      const blade = kind === 'blade11' || kind === 'blade15' || kind === 'punch';
+      if (blade && L.queue.length) L.incisionRelease(this.W.ctx, kind);
+      if (blade && L.solid() && !L._solidCut) { L._solidCut = 1; this.W.fx.toast('warn', 'Nothing to drain', 'This is solid inflammation, not a cavity: the cut only bleeds (MSD). Leave it, or inject steroid.'); }
       // injecting into / incising a pressurised abscess: pus wells up immediately
       if ((L.type === 'furuncle' || L.type === 'carbuncle' || L.type === 'pseudocyst' || L.type === 'giant') && L.P > 2) L.surfaceRuptureLike = true;
       if (L.hair && kind === 'needle') { /* tip still embedded until lifted */ }
@@ -98,10 +102,14 @@ PP.Wounds.prototype.updCut = function (c) {
   c.gape = this.W.phys.cutGape(dx, dy, len / 2, c.depth / lim.dermis);
   const mx = (c.ax + c.bx) / 2, my = (c.ay + c.by) / 2;
   const rEq = Math.sqrt((len * Math.max(c.gape, 0.22 * len)) / Math.PI);
-  // any lesion the cut crosses gets an opening
+  // any lesion the cut crosses gets an opening; the cut remembers what it went through
   for (const L of this.W.lesions) {
     const d = this.segDist(c, L.x + L.ox, L.y + L.oy);
-    if (d < Math.max(L.R * 0.6, 0.6)) this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
+    if (d >= Math.max(L.R * 0.6, 0.6)) continue;
+    if (!c.L || L.R > c.L.R) { c.L = L; c.layer = PP.CUTLAYER[L.type] || 0; c.layerZ = Math.max(L.roofT, 0.05); }
+    c.inflam = Math.max(c.inflam || 0, L.inflam + (L.deep || 0) * 0.4);
+    if (L.T.open === 'open' && (c.blade === 'blade11' || c.blade === 'blade15') && !L._openCut) { L._openCut = 1; this.W.fx.toast('warn', 'Already open', 'A blackhead has its own pore: cutting only adds a wound. Use the comedone loop.'); }
+    this.openLesions(L.x + L.ox, L.y + L.oy, Math.min(rEq, 2.2), c.depth, c.blade, len, mx, my, c.gape);
   }
 };
 PP.Wounds.prototype.segDist = function (c, x, y) {
@@ -213,7 +221,7 @@ PP.Wounds.prototype.stepBleed = function (dt) {
     const press = clot(c, mx, my);
     const deep = PP.clamp((c.depth - lim.epi) / (lim.dermis * 0.6), 0, 1.5);
     if (deep <= 0) continue;
-    const n = emit(c, 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
+    const n = emit(c, (1 + 1.5 * (c.inflam || 0)) * 0.18 * c.len * deep, 0.13, mx, my, press);   // µL/s per mm at dermal depth (cal)
     for (let k = 0; k < n; k++) {
       const t = W.rng(), side = W.rng() < 0.5 ? -1 : 1;
       const x = PP.lerp(c.ax, c.bx, t) - c.dy * side * c.gape * 0.5, y = PP.lerp(c.ay, c.by, t) + c.dx * side * c.gape * 0.5;

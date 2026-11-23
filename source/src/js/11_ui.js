@@ -68,7 +68,7 @@ PP.UI.prototype.build = function () {
   $('zfit').addEventListener('click', () => {
     const B = PP.main.B;
     if (B && B.mode !== 'macro') { if (B.interactive()) { B.cam = B.copyCam(B.overview(W.areaId)); B.tgt = B.copyCam(B.cam); } return; }
-    W.cam.tz = this.zmin(); this.zoomBy(1);
+    W.cam.tz = this.zpatch(); this.zoomBy(1);
   });
   $('zbody').addEventListener('click', () => {
     const B = PP.main.B;
@@ -128,7 +128,7 @@ PP.UI.prototype.renderChart = function (rebuild) {
       const row = e.target.closest('.les'); if (!row) return;
       const L = row.dataset.fil ? fil[0] : W.lesions[+row.dataset.id];
       if (!L) return;
-      W.cam.tx = L.x; W.cam.ty = L.y; W.cam.tz = Math.max(W.cam.tz || W.cam.zoom, PP.clamp(W.area.view / (L.R * 9), 1, 4)); this.clampTarget();
+      W.cam.tx = L.x; W.cam.ty = L.y; this.clampTarget();
       this.sel = L;
     };
   }
@@ -211,6 +211,10 @@ PP.UI.prototype.update = function (dt) {
   const f = T.forceMax ? T.force / T.forceMax : 0;
   this.$('forcebar').firstChild.style.width = (PP.clamp(f, 0, 1) * 100).toFixed(0) + '%';
   this.$('painbar').firstChild.style.width = (PP.clamp(W.painLevel, 0, 1) * 100).toFixed(0) + '%';
+  // pop meter: how close the roof (good: pops out) or the wall (bad: bursts inward) is to giving way
+  { const La = W.activeLesion, rr = La ? La.rRoof || 0 : 0, rw = La ? La.rWall || 0 : 0, v = Math.max(rr, rw);
+    const pb = this.$('popbar'); pb.firstChild.style.width = (PP.clamp(v, 0, 1) * 100).toFixed(0) + '%';
+    pb.classList.toggle('deep', rw >= rr && v > 0.25); }
   const L = W.activeLesion;
   let ro = '';
   if (T.force > 0) ro += (T.id === 'vacuum' ? (T.vacLevels[T.vacLevel] * PP.clamp(f, 0, 1)).toFixed(0) + ' kPa' : T.force.toFixed(1) + ' N');
@@ -274,7 +278,7 @@ PP.UI.prototype.bindInput = function () {
     // and becomes a normal press if held still; blades, needles and injections always act
     if (e.button === 0 && this.ptrs.size === 1 && this.canPanFrom(p.x, p.y, T.id)) {
       const q = this.pending = { sx: e.clientX, sy: e.clientY, cx: W.cam.x, cy: W.cam.y, x: p.x, y: p.y, shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 };
-      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure }); } }, 220);
+      q.timer = setTimeout(() => { if (this.pending === q) { this.pending = null; T.down(q.x, q.y, { shift: q.shift, pressure: q.pressure, fit: true }); } }, 220);
       return;
     }
     if (this.ptrs.size === 2) {
@@ -287,7 +291,7 @@ PP.UI.prototype.bindInput = function () {
       else this.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: W.cam.zoom, cx: W.cam.x, cy: W.cam.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       return;
     }
-    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0 });
+    T.down(p.x, p.y, { shift: e.shiftKey, pressure: e.pointerType === 'pen' ? e.pressure : 0, fit: true });
   });
   cv.addEventListener('pointermove', (e) => {
     if (body()) { body().move(e); return; }
@@ -341,6 +345,7 @@ PP.UI.prototype.bindInput = function () {
       // cursor: open hand over clear skin (drag to move), crosshair where the instrument would act
       const now = performance.now();
       if (now - (this._curT || 0) > 50) { this._curT = now; cv.classList.toggle('pannable', !this.placeType && !this.erasing && this.canPanFrom(p.x, p.y, T.id)); }
+      if (T.id === 'fingers' || T.id === 'swabs') W.activeUntil = Math.max(W.activeUntil || 0, W.time + 0.3);   // pad preview rings follow
     }
     else T.move(p.x, p.y, { pressure: e.pointerType === 'pen' ? e.pressure : null });
   });
@@ -365,7 +370,7 @@ PP.UI.prototype.bindInput = function () {
     if (body()) { body().wheel(e); return; }
     if (e.shiftKey) {
       const k = e.deltaY > 0 ? -1 : 1;
-      if (T.id === 'fingers' || T.id === 'swabs') T.spread[T.id] = PP.clamp(T.spread[T.id] + k * 0.3, 1.5, 12);
+      if (T.id === 'fingers' || T.id === 'swabs') T.nudge(T.id, k * 0.3);
       else if (T.id === 'loop') T.loopR = T.loopR > 1 ? 0.75 : 1.25;
       else if (T.id === 'vacuum') T.vacLevel = PP.clamp(T.vacLevel + k, 0, 2);
       return;
@@ -402,8 +407,8 @@ PP.UI.prototype.bindInput = function () {
     const t = PP.TOOLS.find((x) => x.key === k);
     if (t) { T.select(t.id); return; }
     if (k === 'Q') T.angle += 0.2; else if (k === 'E') T.angle -= 0.2;
-    else if (k === '[') { if (T.spread[T.id] != null) T.spread[T.id] = Math.max(1.5, T.spread[T.id] - 0.4); }
-    else if (k === ']') { if (T.spread[T.id] != null) T.spread[T.id] = Math.min(12, T.spread[T.id] + 0.4); }
+    else if (k === '[') T.nudge(T.id, -0.4);
+    else if (k === ']') T.nudge(T.id, 0.4);
     else if (e.key === '+' || e.key === '=') this.zoomBy(1.35);
     else if (e.key === '-' || e.key === '_') this.zoomBy(1 / 1.35);
     else if (k === 'X') this.setErase(!this.erasing);
@@ -458,7 +463,9 @@ PP.UI.prototype.bodyLabel = function (h) {
   el.hidden = false; this.canvas.classList.add('pointing');
 };
 // zoom far enough out to see the whole skin patch
-PP.UI.prototype.zmin = function () { return Math.min(0.6, this.W.area.view / this.W.area.size); };
+// the close-up zooms out to 3x the whole patch (the skin carries on past its edge) before the 3D view takes over
+PP.UI.prototype.zmin = function () { return this.W.area.view / (3 * this.W.area.size); };
+PP.UI.prototype.zpatch = function () { return this.W.area.view / this.W.area.size; };
 PP.UI.prototype.setErase = function (on) {
   this.erasing = !!on;
   if (on) { this.placeType = null; this.$('addsel').value = ''; this.canvas.classList.remove('placing'); }

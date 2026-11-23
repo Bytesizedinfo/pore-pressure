@@ -184,18 +184,22 @@ PP.Renderer.prototype.uploadLesions = function () {
     const f = L.queue.length ? L.fill() : 1;
     const H = L.domeH();
     const plugExt = L.plug ? (L.plug.out ? 1 : L.plug.ext / L.plug.L) : (L.coreOut || (L.T.vis === 20 && L.done) ? 1 : 0);
-    const headR = T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45;
+    const pn0 = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
+    const headR = (T.vis === 9 || T.vis === 10 ? L.R * (0.12 + 0.2 * L.pointing) : T.vis === 1 || T.vis === 2 ? L.R * 0.35 : L.R * 0.45)
+      * (1 + (T.vis === 7 || T.vis === 8 || T.vis === 19 ? 0.5 : T.vis === 1 || T.vis === 2 ? 0.4 : 0.15) * pn0);
     let openVis = L.open.r > 0 && (L.popped || L.open.kind === 'needle' || L.open.kind === 'tear') ? Math.min(L.ropen ? L.ropen() : L.open.r, L.R * 0.6) : 0;
-    if (T.open === 'open') openVis = L.open.r;
+    // squeezing pressure, normalised (~30 kPa = 1): heads swell, pores dilate, puncta gape
+    const pn = PP.clamp(L.P / 30, 0, 1.5) * (L.queue.length ? Math.max(f, 0.2) : 1);
+    if (T.open === 'open') openVis = L.open.r * (1 + 0.3 * pn);
     const cc = L.type === 'pustule' || L.type === 'giant' || L.type === 'ingrown' || L.type === 'furuncle' || L.type === 'carbuncle' ? L.pusCol : L.type === 'pseudocyst' ? PP.hex2lin('#b97f6a') : L.type === 'epidermoid' || L.type === 'pilar' ? PP.hex2lin('#efe2b8') : L.type === 'whitehead' || L.type === 'macrocomedone' ? PP.hex2lin('#f0ead8') : PP.hex2lin('#f2eee4');
     const vis = T.vis;
     const vals = [
       cx, cy, L.R, H,
       vis, L.inflam + L.deep * 0.4 + L.irrit * 0.5, headR, openVis,
       cc[0], cc[1], cc[2], L.type === 'furuncle' || L.type === 'carbuncle' ? 1 : f,
-      L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, L.punctum || 0,
+      L.depth, L.queue.length && L.open.r > 0 ? 1 - f : 0, L.crater, (L.punctum || 0) * (1 + 0.8 * pn),
       L.seed, L.pointing, L.hematoma, plugExt,
-      0, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
+      pn, L.steroidT >= 0 ? PP.clamp(L.steroidT / 172800, 0, 1) : 0, L.scab, 0,
     ];
     d.set(vals, o);
   });
@@ -256,14 +260,18 @@ PP.Renderer.prototype.contactUniforms = function (prog, relaxing) {
 };
 PP.Renderer.prototype.woundUniforms = function (prog) {
   const gl = this.gl, Wd = this.W.wounds, clock = this.W.clock;
-  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
+  const B = this._wb || (this._wb = { c0: new Float32Array(64), c1: new Float32Array(64), c2: new Float32Array(64), h0: new Float32Array(32), h1: new Float32Array(32), j0: new Float32Array(32), j1: new Float32Array(32), p0: new Float32Array(128) });
   const nc = Math.min(16, Wd.cuts.length), oc = Wd.cuts.length - nc;
   for (let i = 0; i < nc; i++) {
     const c = Wd.cuts[oc + i], o = i * 4;
     B.c0[o] = c.ax; B.c0[o + 1] = c.ay; B.c0[o + 2] = c.bx; B.c0[o + 3] = c.by;
-    B.c1[o] = c.depth; B.c1[o + 1] = c.gape; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+    // a cut over a pressurised lesion is pushed open wider by the contents behind it
+    const Lc = c.L, gk = Lc && Lc.queue && Lc.queue.length && Lc.open.r > 0 ? 1 + 0.6 * PP.clamp(Lc.P / 20, 0, 1) * Lc.fill() : 1;
+    B.c1[o] = c.depth; B.c1[o + 1] = c.gape * gk; B.c1[o + 2] = c.clot; B.c1[o + 3] = clock - c.t;
+    B.c2[o] = c.layer || 0; B.c2[o + 1] = c.layerZ || 0; B.c2[o + 2] = Lc ? Lc.fill() : 0; B.c2[o + 3] = 0;
   }
   if (prog.u.uCut0) { gl.uniform4fv(prog.u.uCut0, B.c0); gl.uniform4fv(prog.u.uCut1, B.c1); gl.uniform1i(prog.u.uNCut, nc); }
+  if (prog.u.uCut2) gl.uniform4fv(prog.u.uCut2, B.c2);
   const nh = Math.min(8, Wd.holes.length), oh = Wd.holes.length - nh;
   for (let i = 0; i < nh; i++) {
     const h = Wd.holes[oh + i], o = i * 4;
@@ -323,6 +331,7 @@ PP.Renderer.prototype.timerEnd = function () {
    into a scaled sub-viewport (no reallocation hitches) and every screen-space read is scaled by uVS. */
 PP.Renderer.prototype.render = function (dt, fullRes) {
   const G = this.G, gl = this.gl, W = this.W, P = this.P;
+  dt = dt > 0 ? dt : 0;   // a frame timestamp can precede the loop's start: never step physiology backwards
   // pick a resolution step; change it at most every 1.5 s so targets are rarely reallocated
   const want = fullRes ? 1 : (this.dyn || 1) >= 0.9 ? 1 : (this.dyn || 1) >= 0.68 ? 0.75 : 0.55;
   const now = performance.now();
