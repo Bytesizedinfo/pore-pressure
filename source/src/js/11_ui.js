@@ -38,7 +38,7 @@ PP.UI.prototype.fx = function () {
 };
 
 PP.UI.prototype.build = function () {
-  const W = this.W, $ = this.$;
+  const W = this.W, T = W.tools, $ = this.$;
   // areas
   const area = $('area');
   area.innerHTML = Object.entries(PP.AREAS).map(([k, a]) => `<option value="${k}">${a.name}</option>`).join('');

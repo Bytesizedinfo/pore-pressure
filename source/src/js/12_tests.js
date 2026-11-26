@@ -525,6 +525,18 @@ PP.Tests.prototype.all = async function () {
     const info = { gape: +c.gape.toFixed(2), slitV: +W.wounds.slitV(c).toFixed(2), sf2: +sf2.toFixed(2), sf20: +sf20.toFixed(2), v20: +v20.toFixed(2), sfW: +sfW.toFixed(2), vW: +vW.toFixed(2), sf3: +sf3.toFixed(2), v3: +v3.toFixed(2), v30: +v30.toFixed(2), clot: +c.clot.toFixed(2) };
     this.ok('wipe_then_slow_ooze', sf2 > 0.05 && sf20 > 0.9 && v20 > 0.3 && sfW < 0.3 && vW < 0.05 && v3 < 0.3 && sf3 > sfW && v30 > v3 + 0.5, info);
   }
+  // 32. the on-screen grip buttons work when clicked (they once threw because the handler had no tools reference)
+  {
+    await this.setup('cheek', []); T.select('fingers');
+    const el = (id) => document.getElementById(id), deg = () => +((T.angle * 180) / Math.PI).toFixed(1);
+    const errs = []; const onErr = (e) => errs.push(String(e.message || e)); window.addEventListener('error', onErr);
+    const a0 = deg(); el('grl').click(); const a1 = deg(); el('gr90').click(); const a2 = deg(); el('grr').click(); const a3 = deg();
+    const s0 = T.spread.fingers; el('gsp').click(); const s1 = T.spread.fingers; el('gsm').click(); el('gsm').click(); const s2 = T.spread.fingers;
+    const snap = el('gsnap'); snap.checked = false; snap.dispatchEvent(new Event('change')); const snapOff = T.snap === false;
+    el('greset').click(); const reset = T.snap === true && snap.checked && deg() === 0;
+    window.removeEventListener('error', onErr);
+    this.ok('ui_grip_buttons', a1 === a0 + 15 && a2 === a1 + 90 && a3 === a2 - 15 && s1 > s0 && s2 < s1 && snapOff && reset && errs.length === 0, { a0, a1, a2, a3, s0, s1, s2, snapOff, reset, errs });
+  }
 
   const passed = this.results.filter((x) => x.pass).length;
   PP.diag.write('SUMMARY ' + passed + '/' + this.results.length + ' passed');
